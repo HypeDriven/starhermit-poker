@@ -1,0 +1,12 @@
+/* StarHermit Poker — base styles. Screen-specific styles are added per checkpoint. */
+:root {
+  --bg: #0e1420;
+  --fg: #e8edf5;
+  --accent: #4da3ff;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+#app { min-height: 100vh; display: flex; flex-direction: column; }
+.screen { padding: 1rem; max-width: 60rem; margin: 0 auto; width: 100%; }
+h1 { font-size: 1.5rem; }

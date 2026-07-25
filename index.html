@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>StarHermit Poker</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <div id="screen-boot" class="screen">
+      <h1>StarHermit Poker</h1>
+      <p id="boot-status">Connecting…</p>
+    </div>
+    <!-- Screens are mounted here by src/app.js: lobby, table, leaderboard, replays -->
+    <div id="screen-root"></div>
+  </div>
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>

@@ -7,14 +7,17 @@
 //      the auth panel, or show the panel to mint one.
 //   3. Probe GET /api/v1/games/{scope} — validates the token and loads game
 //      info (leaderboard id, my stats) used by the menu screens.
+//   4. Reconnect: GET /api/v1/realtime/rooms/mine — a non-Closed room drops
+//      the player straight back into its lobby (or the table when Playing).
 //
 // Screens are mounted into #screen-root; every screen owns its timers and
-// sockets and must release them on teardown (see the lobby/table controllers
-// in later checkpoints).
+// sockets and must release them in destroy().
 
 import { GAME } from './config.js';
 import { captureLaunchCredentials, createNetContext } from './net.js';
 import { showAuthPanel, clearDevToken } from './auth-panel.js';
+import { RoomController } from './realtime-room.js';
+import { MenuScreen, LobbyScreen } from './lobby.js';
 
 const bootScreen = () => document.getElementById('screen-boot');
 const screenRoot = () => document.getElementById('screen-root');
@@ -43,67 +46,108 @@ function showFatal(message) {
   root.append(box);
 }
 
-// Placeholder main screen until checkpoint 4 lands the lobby. Shows that auth,
-// token refresh, and the game-info probe all work end to end.
-function enterMain(net, gameInfo, { production, deepLinkSessionId }) {
-  leaveBootScreen();
-  const root = screenRoot();
-  root.textContent = '';
+// ---------------------------------------------------------------------------
+// Screen management: exactly one active screen at a time.
 
-  const me = (gameInfo && gameInfo.me) || {};
-  const screen = document.createElement('div');
-  screen.className = 'screen main-menu';
+let currentScreen = null;
 
-  const h = document.createElement('h1');
-  h.textContent = gameInfo && gameInfo.name ? gameInfo.name : GAME.name;
+function switchScreen(screen) {
+  if (currentScreen && currentScreen.destroy) currentScreen.destroy();
+  currentScreen = screen;
+  if (screen && screen.show) screen.show();
+}
 
-  const idLine = document.createElement('p');
-  idLine.className = 'muted';
-  idLine.textContent =
-    `Signed in as ${net.userId ? 'Player ' + net.userId.slice(0, 8) : 'unknown'} · ` +
-    `game "${net.scope}" · ${production ? 'platform launch' : 'local dev'}`;
-
-  const stats = document.createElement('p');
-  stats.textContent = me.userId
-    ? `Elo ${me.elo} · ${me.wins}W / ${me.losses}L / ${me.draws}D · active sessions ${me.activeSessionCount}`
-    : 'No stats yet.';
-
-  screen.append(h, idLine, stats);
-
-  if (deepLinkSessionId) {
-    const link = document.createElement('p');
-    link.textContent = `Deep-linked session: ${deepLinkSessionId}`;
-    screen.append(link);
-  }
-
-  if (!production) {
-    const out = document.createElement('button');
-    out.type = 'button';
-    out.textContent = 'Sign out (dev)';
-    out.addEventListener('click', () => {
-      clearDevToken();
-      net.tokenManager.destroy();
-      location.reload();
+// Placeholder table screen until the gameplay socket (checkpoint 7) and the
+// full table UI (checkpoint 13) land. Keeps the realtime socket alive for
+// roster/presence — a Playing room is closed by the platform if the host has
+// no active socket for 60 s.
+class TablePlaceholderScreen {
+  constructor(ctx, room) {
+    this.ctx = ctx;
+    this.room = room;
+    this.controller = new RoomController(ctx.net, {
+      onRoster: (r) => {
+        this.room = r;
+        this.render();
+      },
     });
-    screen.append(out);
   }
 
-  const note = document.createElement('p');
-  note.className = 'muted';
-  note.textContent = 'Lobby arrives in checkpoint 4.';
-  screen.append(note);
+  show() {
+    const { root } = this.ctx;
+    root.textContent = '';
+    this.info = document.createElement('p');
+    const screen = document.createElement('div');
+    screen.className = 'screen';
+    const h = document.createElement('h1');
+    h.textContent = 'Table started';
+    this.info.className = 'muted';
+    const leave = document.createElement('button');
+    leave.type = 'button';
+    leave.textContent = 'Leave table';
+    leave.addEventListener('click', async () => {
+      try { await this.controller.leaveRoom(this.room.id); } catch { /* already gone */ }
+      switchScreen(new MenuScreen(this.ctx));
+    });
+    screen.append(h, this.info, leave);
+    root.append(screen);
+    this.render();
+    this.controller.connect(this.room.id);
+  }
 
-  root.append(screen);
+  render() {
+    if (this.info) {
+      this.info.textContent =
+        `Room ${this.room.status} · gameSessionId ${this.room.gameSessionId || 'pending'} · ` +
+        'gameplay arrives in checkpoint 7.';
+    }
+  }
+
+  destroy() {
+    this.controller.destroy();
+  }
+}
+
+function makeScreenCtx(net, gameInfo) {
+  return {
+    root: screenRoot(),
+    net,
+    gameInfo,
+    onEnterLobby: (room) => switchScreen(new LobbyScreen(makeScreenCtx(net, gameInfo), room)),
+    onEnterTable: (room) => switchScreen(new TablePlaceholderScreen(makeScreenCtx(net, gameInfo), room)),
+    onExitToMenu: () => switchScreen(new MenuScreen(makeScreenCtx(net, gameInfo))),
+  };
+}
+
+async function enterApp(net, gameInfo, { production, deepLinkSessionId }) {
+  leaveBootScreen();
+  const ctx = makeScreenCtx(net, gameInfo);
+
+  // Reconnect path: a non-Closed room restores the lobby or table. The
+  // deep-link session id is honored once gameplay exists (checkpoint 7).
+  try {
+    const room = await new RoomController(net).myRoom();
+    if (room && room.status !== 'Closed') {
+      if (room.status === 'Playing') switchScreen(new TablePlaceholderScreen(ctx, room));
+      else switchScreen(new LobbyScreen(ctx, room));
+      return;
+    }
+  } catch { /* reconnect probe failed — fall through to the menu */ }
+
+  switchScreen(new MenuScreen(ctx));
 }
 
 async function bootWithToken(token, apiBase, { production, deepLinkSessionId }) {
   const net = createNetContext({ token, apiBase });
-  window.addEventListener('pagehide', () => net.tokenManager.destroy());
+  window.addEventListener('pagehide', () => {
+    if (currentScreen && currentScreen.destroy) currentScreen.destroy();
+    net.tokenManager.destroy();
+  });
 
   setBootStatus('Checking session…');
   try {
     const gameInfo = await net.client.get(`/api/v1/games/${net.scope}`);
-    enterMain(net, gameInfo, { production, deepLinkSessionId });
+    await enterApp(net, gameInfo, { production, deepLinkSessionId });
   } catch (e) {
     net.tokenManager.destroy();
     if (production) {

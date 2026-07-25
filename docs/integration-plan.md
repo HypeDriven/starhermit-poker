@@ -90,8 +90,8 @@ The repository is **empty** (git repo, no commits on disk, no files). There is n
 1. ✅ Inspect repository + write this plan.
 2. ✅ Manifest + networking layer (`starhermit.txt`, `index.html` shell, `src/config.js`, `src/net.js`) + test harness skeleton.
 3. ✅ Auth/launch-token handling + boot flow (local-dev auth panel fallback).
-4. Realtime room creation + lobby UI.
-5. Friend invites + quick join.
+4. ✅ Realtime room creation + lobby UI.
+5. Friend invites + quick join (quick join landed early in checkpoint 4; invites remain).
 6. Minimal room-bound `server.js` (session create, sync, projections, summary).
 7. Gameplay WS + synchronization client.
 8. Deck/dealing + private-state projections (+ leak tests).

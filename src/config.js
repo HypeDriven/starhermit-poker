@@ -38,6 +38,16 @@ export const GAME = Object.freeze({
 
   // AI behavior profiles assigned at table start.
   aiProfiles: ['conservative', 'balanced', 'aggressive'],
+
+  // Local-development auth panel (the documented pattern when no #game_token
+  // launch happens: the token is cached in sessionStorage, the API base in
+  // localStorage — slug-specific keys). Production launch tokens never touch
+  // storage.
+  dev: {
+    defaultApiBase: 'http://localhost:5000',
+    apiBaseKey: 'poker.apiBase',
+    gameTokenKey: 'poker.gameToken',
+  },
 });
 
 // Room metadata stored verbatim in config.metadata on room creation.

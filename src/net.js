@@ -163,17 +163,22 @@ export class ApiError extends Error {
 
 export class ApiClient {
   // getToken: () => current launch token (may change after refresh).
-  constructor(getToken) {
+  // baseUrl: '' for same-origin production; an explicit origin like
+  // 'http://localhost:5000' for local development. fetchImpl is injectable
+  // for tests.
+  constructor({ getToken, baseUrl = '', fetchImpl = null }) {
     this.getToken = getToken;
+    this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.fetch = fetchImpl || ((...args) => fetch(...args));
   }
 
   async request(method, path, body) {
-    if (!path.startsWith('/')) throw new Error('ApiClient: paths must be same-origin relative');
+    if (!path.startsWith('/')) throw new Error('ApiClient: paths must be absolute-from-root');
     const headers = {};
     const token = this.getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
     if (body !== undefined && body !== null) headers['Content-Type'] = 'application/json';
-    const res = await fetch(path, {
+    const res = await this.fetch(this.baseUrl + path, {
       method,
       headers,
       body: body !== undefined && body !== null ? JSON.stringify(body) : undefined,
@@ -293,13 +298,16 @@ export class ReconnectingSocket {
 // Bootstrap helper: build the shared net context from the captured launch
 // credentials (or a locally supplied dev token — see checkpoint 3 auth panel).
 
-export function createNetContext({ token, api = null }) {
+export function createNetContext({ token, apiBase = '', api = null }) {
   const claims = token ? decodeJwtPayload(token) : null;
   const scope = claims && typeof claims.game_scope === 'string'
     ? claims.game_scope
     : GAME.defaultSlug; // local-dev fallback only; production always has the claim
   const userId = claims && typeof claims.sub === 'string' ? claims.sub : null;
-  const client = api || new ApiClient(() => net.tokenManager.token);
+  const client = api || new ApiClient({
+    getToken: () => net.tokenManager.token,
+    baseUrl: apiBase,
+  });
   const net = {
     client,
     scope,

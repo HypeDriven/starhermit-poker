@@ -10,3 +10,20 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
 #app { min-height: 100vh; display: flex; flex-direction: column; }
 .screen { padding: 1rem; max-width: 60rem; margin: 0 auto; width: 100%; }
 h1 { font-size: 1.5rem; }
+
+/* Auth panel / forms */
+.auth-panel { padding: 1rem; max-width: 28rem; margin: 2rem auto; display: flex;
+  flex-direction: column; gap: 0.5rem; }
+.auth-panel label { font-size: 0.85rem; opacity: 0.8; margin-top: 0.5rem; }
+.auth-panel input, .auth-panel textarea { background: #16202f; color: var(--fg);
+  border: 1px solid #2a3a52; border-radius: 6px; padding: 0.5rem; font: inherit; }
+.auth-panel input:focus, .auth-panel textarea:focus { outline: 2px solid var(--accent); }
+button { background: #1d2a3d; color: var(--fg); border: 1px solid #2a3a52;
+  border-radius: 6px; padding: 0.5rem 1rem; font: inherit; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #06121f;
+  font-weight: 600; }
+.muted { opacity: 0.65; }
+.error { color: #ff7b72; }
+.main-menu button { margin-top: 0.5rem; }

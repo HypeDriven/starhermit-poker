@@ -192,6 +192,7 @@ function makeSeat(rosterEntry, config) {
     folded: false,
     allIn: false,
     sittingOut: false,
+    sitOutNext: false, // sit-out-next-hand preference
     eliminated: false,
     showCards: false,   // voluntary reveal choice
     lastActionSeq: -1,  // action sequence of this seat's latest action
@@ -415,6 +416,143 @@ function syncPresence(state, ctx) {
 }
 
 // ---------------------------------------------------------------------------
+// Hand lifecycle
+// ---------------------------------------------------------------------------
+
+// Seats eligible to be dealt into the next hand.
+function eligibleSeats(state) {
+  const out = [];
+  state.seats.forEach((s, i) => {
+    if (!s.eliminated && !s.sittingOut && s.stack > 0) out.push(i);
+  });
+  return out;
+}
+
+// Next seat index (circular) after `from` satisfying pred(i).
+function nextSeat(state, from, pred) {
+  const n = state.seats.length;
+  for (let step = 1; step <= n; step++) {
+    const i = (from + step) % n;
+    if (pred(i)) return i;
+  }
+  return -1;
+}
+
+function postChips(state, seatIndex, amount) {
+  const s = state.seats[seatIndex];
+  const posted = Math.min(amount, s.stack);
+  s.stack -= posted;
+  s.handCommit += posted;
+  s.roundCommit += posted;
+  if (s.stack === 0) s.allIn = true;
+  return posted;
+}
+
+function logAction(state, seat, action, amount) {
+  globalThis.pokerRules.cappedPush(state.log,
+    [state.actionSeq, state.handNumber, seat, action, amount || 0], LIMITS.actionLog);
+}
+
+// Start a new hand: advance the button, post blinds, shuffle and deal with
+// randomness derived ONLY from ctx.random, set the first actor and deadline.
+// Returns true when a hand was started.
+function startHand(state, ctx) {
+  const rules = globalThis.pokerRules;
+
+  // Apply pending sit-out requests and fresh eliminations.
+  for (const s of state.seats) {
+    if (s.stack === 0) s.eliminated = true;
+    s.sittingOut = !!s.sitOutNext;
+    s.sitOutNext = false;
+  }
+
+  const eligible = eligibleSeats(state);
+  if (eligible.length < 2) return false; // match completion is handled by the caller
+
+  state.handNumber += 1;
+  state.hand = newHandState();
+  const hand = state.hand;
+  hand.live = true;
+  hand.street = 'preflop';
+
+  // Button: first hand picks via the host rng, then rotates to the next
+  // eligible seat.
+  const rng = rules.mulberry32(rules.deriveSeed(ctx.random, state.handNumber));
+  if (state.dealerSeat < 0) {
+    state.dealerSeat = eligible[Math.floor(rng() * eligible.length)];
+  } else {
+    state.dealerSeat = nextSeat(state, state.dealerSeat,
+      (i) => eligible.includes(i));
+  }
+
+  const headsUp = eligible.length === 2;
+  const sbSeat = headsUp
+    ? state.dealerSeat
+    : nextSeat(state, state.dealerSeat, (i) => eligible.includes(i));
+  const bbSeat = nextSeat(state, sbSeat, (i) => eligible.includes(i));
+  hand.smallBlindSeat = sbSeat;
+  hand.bigBlindSeat = bbSeat;
+
+  // Shuffle and deal one card at a time starting at the small blind.
+  hand.deck = rules.shuffle(rules.freshDeck(), rng);
+  hand.holes = state.seats.map(() => null);
+  for (let round = 0; round < 2; round++) {
+    let seat = sbSeat;
+    for (let k = 0; k < eligible.length; k++) {
+      if (!hand.holes[seat]) hand.holes[seat] = [];
+      hand.holes[seat].push(hand.deck.pop());
+      seat = nextSeat(state, seat, (i) => eligible.includes(i));
+    }
+  }
+
+  // Blinds.
+  for (const s of state.seats) {
+    s.folded = false;
+    s.allIn = false;
+    s.handCommit = 0;
+    s.roundCommit = 0;
+    s.showCards = false;
+    s.lastActionSeq = -1;
+  }
+  const bbPosted = postChips(state, bbSeat, state.config.bigBlind);
+  const sbPosted = postChips(state, sbSeat, state.config.smallBlind);
+  state.actionSeq += 1;
+  state.seats[sbSeat].lastActionSeq = state.actionSeq;
+  logAction(state, sbSeat, 'blind', sbPosted);
+  state.actionSeq += 1;
+  state.seats[bbSeat].lastActionSeq = state.actionSeq;
+  logAction(state, bbSeat, 'blind', bbPosted);
+
+  hand.currentBet = bbPosted;
+  hand.lastFullRaise = state.config.bigBlind;
+  hand.lastFullRaiseSeq = state.actionSeq;
+  hand.minRaiseTotal = bbPosted + hand.lastFullRaise;
+
+  // First action preflop: heads-up the dealer (small blind); otherwise the
+  // seat left of the big blind.
+  const actor = headsUp
+    ? state.dealerSeat
+    : nextSeat(state, bbSeat, (i) => eligible.includes(i));
+  state.actingSeat = actor;
+  state.turnDeadlineMs = ctx.now + state.config.turnDurationSeconds * 1000;
+  return true;
+}
+
+function handStartedBroadcast(state) {
+  return {
+    to: 'all',
+    data: {
+      type: 'hand-started',
+      stateVersion: state.actionSeq,
+      handNumber: state.handNumber,
+      dealerSeat: state.dealerSeat,
+      smallBlindSeat: state.hand.smallBlindSeat,
+      bigBlindSeat: state.hand.bigBlindSeat,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Entry points
 // ---------------------------------------------------------------------------
 
@@ -422,6 +560,7 @@ globalThis.game = {
   createSession(ctx) {
     const state = initialState(ctx);
     syncPresence(state, ctx);
+    startHand(state, ctx);
     state.summary = summaryFor(state);
 
     // Initialize per-player documents (stats owned by the script).
@@ -434,11 +573,14 @@ globalThis.game = {
         : { elo: 1200, wins: 0, losses: 0, draws: 0 };
     }
 
+    const broadcast = stateBroadcasts(state);
+    if (state.hand.live) broadcast.unshift(handStartedBroadcast(state));
+
     return {
       ok: true,
       sessionState: state,
       playerStates,
-      broadcast: stateBroadcasts(state),
+      broadcast,
     };
   },
 
@@ -479,6 +621,30 @@ globalThis.game = {
       };
     }
 
+    // Preference commands: allowed from any seated human, in or out of a hand.
+    const seatIndex = state.seats.findIndex((s) => s.userId === msg.from);
+    if (seatIndex < 0) return fail('You are not seated at this table');
+    const seat = state.seats[seatIndex];
+    if (seat.ai) return fail('This seat is played by the AI');
+
+    if (data.type === 'sit-out-next-hand') {
+      if (typeof data.enabled !== 'boolean') return fail('enabled must be a boolean');
+      seat.sitOutNext = data.enabled;
+      state.actionSeq += 1;
+      state.summary = summaryFor(state);
+      return { ok: true, sessionState: state, broadcast: stateBroadcasts(state) };
+    }
+
+    if (data.type === 'show-cards') {
+      if (typeof data.enabled !== 'boolean') return fail('enabled must be a boolean');
+      // Meaningful only while the player holds cards; the reveal is applied
+      // when the hand completes (checkpoint 10).
+      seat.showCards = data.enabled;
+      state.actionSeq += 1;
+      state.summary = summaryFor(state);
+      return { ok: true, sessionState: state, broadcast: stateBroadcasts(state) };
+    }
+
     return fail('Unknown or not-yet-legal command: ' + data.type);
   },
 
@@ -486,7 +652,17 @@ globalThis.game = {
     const state = ctx.sessionState;
     if (!state) return { ok: true };
     syncPresence(state, ctx);
+    // Between hands (e.g. right after session creation failed to deal because
+    // only one seat had chips): try to start the next hand.
+    let broadcast;
+    if (!state.hand.live && !state.matchResult) {
+      const before = state.handNumber;
+      if (startHand(state, ctx) && state.handNumber !== before) {
+        broadcast = stateBroadcasts(state);
+        broadcast.unshift(handStartedBroadcast(state));
+      }
+    }
     state.summary = summaryFor(state);
-    return { ok: true, sessionState: state };
+    return { ok: true, sessionState: state, broadcast };
   },
 };

@@ -41,7 +41,10 @@ test('createSession builds seats from the room roster in slot order', () => {
   assert.equal(s.seats[2].userId, null);
   assert.equal(s.seats[2].ai, true);
   assert.equal(s.seats[2].name, 'Rafa Vento');
-  assert.ok(s.seats.every((seat) => seat.stack === 10000));
+  // Blinds are posted at deal time; chips are conserved.
+  const total = s.seats.reduce((t, seat) => t + seat.stack + seat.handCommit, 0);
+  assert.equal(total, 30000);
+  assert.ok(s.seats.every((seat) => seat.stack < 10000 || seat.handCommit === 0));
 });
 
 test('createSession emits the platform summary window', () => {
@@ -49,7 +52,7 @@ test('createSession emits the platform summary window', () => {
   const summary = res.sessionState.summary;
   assert.deepEqual(Object.keys(summary), ['turnPlayerId', 'deadline', 'status', 'moveCount']);
   assert.equal(summary.status, 'active');
-  assert.equal(summary.moveCount, 0);
+  assert.equal(summary.moveCount, 2); // two blind posts logged
 });
 
 test('createSession initializes per-player documents for humans only', () => {
@@ -106,13 +109,13 @@ test('stale stateVersion is rejected', () => {
   assert.match(res.error, /stale/i);
 });
 
-test('no broadcast ever targets "all" with raw state or contains deck/holes', () => {
+test('no state broadcast ever targets "all" or contains deck/holes', () => {
   const created = game.createSession(roomCtx());
   for (const b of created.broadcast) {
-    assert.notEqual(b.to, 'all');
+    if (b.data.type === 'state') assert.notEqual(b.to, 'all');
     assert.equal('deck' in b.data, false);
     assert.equal('holes' in b.data, false);
-    assert.equal('hand' in b.data.publicState, false);
+    if (b.data.publicState) assert.equal('hand' in b.data.publicState, false);
   }
 });
 

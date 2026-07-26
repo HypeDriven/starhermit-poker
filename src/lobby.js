@@ -211,6 +211,8 @@ export class LobbyScreen {
       onResult: () => {},
       onSocketDown: () => this.render(),
     });
+    this._profileListener = () => this.render();
+    ctx.net.profiles.addListener(this._profileListener);
   }
 
   async show() {
@@ -312,9 +314,12 @@ export class LobbyScreen {
         onclick: () => this.invite(f),
       });
       btn.disabled = pending;
+      // Friends list carries no nickname; resolve through the profile cache.
+      this.ctx.net.profiles.profile(f.userId);
+      const name = this.ctx.net.profiles.displayName(f.userId, f.username);
       this.friendList.append(el('div', { class: 'friend-row' },
         el('span', { class: `dot${f.online ? ' on' : ''}` }),
-        el('span', { class: 'friend-name', text: f.username }),
+        el('span', { class: 'friend-name', text: name }),
         f.currentGame ? el('span', { class: 'muted small', text: `playing ${f.currentGame}` }) : '',
         btn,
       ));
@@ -466,8 +471,12 @@ export class LobbyScreen {
     const ready = isSelf
       ? this.selfReady
       : this.controller.readyTracker.isReady(participant.id);
+    const displayName = participant.isAi || !participant.userId
+      ? (participant.username || 'AI')
+      : (this.ctx.net.profiles.profile(participant.userId),
+        this.ctx.net.profiles.displayName(participant.userId, participant.username));
     return el('div', { class: `seat${isSelf ? ' self' : ''}${online ? '' : ' offline'}` },
-      el('span', { class: 'seat-name', text: participant.username || 'Player' }),
+      el('span', { class: 'seat-name', text: displayName }),
       el('span', { class: 'seat-badges' },
         participant.isHost ? el('span', { class: 'badge host', text: 'HOST' }) : '',
         participant.isAi ? el('span', { class: 'badge ai', text: 'AI' }) : '',
@@ -478,6 +487,7 @@ export class LobbyScreen {
 
   destroy() {
     this.destroyed = true;
+    this.ctx.net.profiles.removeListener(this._profileListener);
     this.controller.destroy();
   }
 }

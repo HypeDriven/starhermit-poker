@@ -46,6 +46,17 @@ export class TableScreen {
       },
     });
     if (room.gameSessionId) this.attachGame(room.gameSessionId);
+
+    this._profileListener = () => this.render();
+    ctx.net.profiles.addListener(this._profileListener);
+  }
+
+  // Nickname-aware display name (roster username as fallback, AI names from
+  // the roster unchanged).
+  seatDisplayName(s) {
+    if (s.ai || !s.userId) return s.name;
+    this.ctx.net.profiles.profile(s.userId); // fire-and-forget; listener re-renders
+    return this.ctx.net.profiles.displayName(s.userId, s.name);
   }
 
   attachGame(sessionId) {
@@ -71,7 +82,12 @@ export class TableScreen {
         `/api/v1/games/${this.ctx.net.scope}/sessions/${sessionId}`);
       if (this.destroyed || !session || !session.chatConversationId) return;
       if (this.chat) this.chat.destroy();
-      this.chat = new ChatPanel(this.ctx.net, session.chatConversationId);
+      this.chat = new ChatPanel(this.ctx.net, session.chatConversationId, {
+        resolveName: (userId, username) => {
+          this.ctx.net.profiles.profile(userId);
+          return this.ctx.net.profiles.displayName(userId, username);
+        },
+      });
       if (this.chatContainer) this.chat.mount(this.chatContainer);
       this.attachVoice(session.chatConversationId);
     } catch { /* chat/voice are optional; gameplay continues without them */ }
@@ -116,7 +132,8 @@ export class TableScreen {
   nameFor(userId) {
     const seats = this.gameState?.publicState?.seats || [];
     const s = seats.find((x) => x.userId === userId);
-    return s ? s.name : `Player ${String(userId).slice(0, 8)}`;
+    this.ctx.net.profiles.profile(userId);
+    return this.ctx.net.profiles.displayName(userId, s ? s.name : undefined);
   }
 
   // Estimate the server clock from turn deadlines so countdowns are smooth.
@@ -346,7 +363,7 @@ export class TableScreen {
         if (s.eliminated) badges.push('OUT');
         if (s.disconnected) badges.push('OFFLINE');
         seatEl.append(
-          el('div', { class: 'seat-title', text: s.name }),
+          el('div', { class: 'seat-title', text: this.seatDisplayName(s) }),
           el('div', { class: 'seat-stack', text: s.stack.toLocaleString() }),
           s.roundCommit > 0
             ? el('div', { class: 'seat-bet', text: `bet ${s.roundCommit.toLocaleString()}` })
@@ -430,6 +447,7 @@ export class TableScreen {
 
   destroy() {
     this.destroyed = true;
+    this.ctx.net.profiles.removeListener(this._profileListener);
     if (this.timerInterval) clearInterval(this.timerInterval);
     if (this.voice) this.voice.destroy();
     if (this.chat) this.chat.destroy();

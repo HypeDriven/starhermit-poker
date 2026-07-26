@@ -19,6 +19,7 @@ import { showAuthPanel, clearDevToken } from './auth-panel.js';
 import { RoomController } from './realtime-room.js';
 import { MenuScreen, LobbyScreen } from './lobby.js';
 import { TableScreen } from './table.js';
+import { sharedProfiles } from './profiles.js';
 
 const bootScreen = () => document.getElementById('screen-boot');
 const screenRoot = () => document.getElementById('screen-root');
@@ -104,6 +105,7 @@ async function enterApp(net, gameInfo, { production, deepLinkSessionId }) {
 
 async function bootWithToken(token, apiBase, { production, deepLinkSessionId }) {
   const net = createNetContext({ token, apiBase });
+  net.profiles = sharedProfiles(net.client, { getToken: () => net.tokenManager.token });
   window.addEventListener('pagehide', () => {
     if (currentScreen && currentScreen.destroy) currentScreen.destroy();
     net.tokenManager.destroy();

@@ -895,6 +895,9 @@ function dealStreet(state) {
     hand.board.push(hand.deck.pop());
     hand.street = hand.street === 'flop' ? 'turn' : 'river';
   }
+  // Street markers make replays deterministic (board cards arrive in order).
+  state.actionSeq += 1;
+  logAction(state, -1, 'street-' + hand.street, 0);
 }
 
 // Is the current betting round complete? Every contesting seat that can still

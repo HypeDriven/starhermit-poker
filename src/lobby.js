@@ -90,6 +90,10 @@ export class MenuScreen {
       type: 'button', text: 'Leaderboard',
       onclick: () => this.ctx.onShowLeaderboard && this.ctx.onShowLeaderboard(),
     });
+    const replaysBtn = el('button', {
+      type: 'button', text: 'Replays',
+      onclick: () => this.ctx.onShowReplays && this.ctx.onShowReplays(),
+    });
 
     this.inviteSection = el('div', { class: 'invite-inbox', hidden: '' });
 
@@ -101,7 +105,7 @@ export class MenuScreen {
           ? `Elo ${me.elo} · ${me.wins}W / ${me.losses}L / ${me.draws}D`
           : 'No-limit Texas Hold\'em · play money only',
       }),
-      el('div', { class: 'menu-actions' }, quickBtn, privateBtn, boardBtn),
+      el('div', { class: 'menu-actions' }, quickBtn, privateBtn, boardBtn, replaysBtn),
       this.inviteSection,
       el('p', {
         class: 'muted small',

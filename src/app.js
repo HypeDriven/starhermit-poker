@@ -20,6 +20,7 @@ import { RoomController } from './realtime-room.js';
 import { MenuScreen, LobbyScreen } from './lobby.js';
 import { TableScreen } from './table.js';
 import { LeaderboardScreen } from './leaderboard.js';
+import { ReplayListScreen, ReplayScreen } from './replays.js';
 import { sharedProfiles } from './profiles.js';
 
 const bootScreen = () => document.getElementById('screen-boot');
@@ -71,6 +72,23 @@ function makeScreenCtx(net, gameInfo) {
     onShowLeaderboard: () => switchScreen(new LeaderboardScreen({
       ...makeScreenCtx(net, gameInfo),
       onBack: () => switchScreen(new MenuScreen(makeScreenCtx(net, gameInfo))),
+    })),
+    onShowReplays: () => switchScreen(new ReplayListScreen({
+      ...makeScreenCtx(net, gameInfo),
+      onBack: () => switchScreen(new MenuScreen(makeScreenCtx(net, gameInfo))),
+      onOpenReplay: (sessionId) => switchScreen(new ReplayScreen({
+        ...makeScreenCtx(net, gameInfo),
+        sessionId,
+        onBack: () => switchScreen(new ReplayListScreen({
+          ...makeScreenCtx(net, gameInfo),
+          onBack: () => switchScreen(new MenuScreen(makeScreenCtx(net, gameInfo))),
+          onOpenReplay: (id) => switchScreen(new ReplayScreen({
+            ...makeScreenCtx(net, gameInfo),
+            sessionId: id,
+            onBack: () => switchScreen(new MenuScreen(makeScreenCtx(net, gameInfo))),
+          })),
+        })),
+      })),
     })),
   };
 }

@@ -22,6 +22,9 @@
     <!-- Screens are mounted here by src/app.js: lobby, table, leaderboard, replays -->
     <div id="screen-root"></div>
   </div>
+  <!-- Loads the shared rules (globalThis.pokerRules) for the replay viewer;
+       the file is also the platform's server-side script. -->
+  <script src="server.js"></script>
   <script type="module" src="src/app.js"></script>
 </body>
 </html>

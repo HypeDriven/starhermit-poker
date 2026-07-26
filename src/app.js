@@ -18,6 +18,7 @@ import { captureLaunchCredentials, createNetContext } from './net.js';
 import { showAuthPanel, clearDevToken } from './auth-panel.js';
 import { RoomController } from './realtime-room.js';
 import { MenuScreen, LobbyScreen } from './lobby.js';
+import { TableScreen } from './table.js';
 
 const bootScreen = () => document.getElementById('screen-boot');
 const screenRoot = () => document.getElementById('screen-root');
@@ -57,64 +58,13 @@ function switchScreen(screen) {
   if (screen && screen.show) screen.show();
 }
 
-// Placeholder table screen until the gameplay socket (checkpoint 7) and the
-// full table UI (checkpoint 13) land. Keeps the realtime socket alive for
-// roster/presence — a Playing room is closed by the platform if the host has
-// no active socket for 60 s.
-class TablePlaceholderScreen {
-  constructor(ctx, room) {
-    this.ctx = ctx;
-    this.room = room;
-    this.controller = new RoomController(ctx.net, {
-      onRoster: (r) => {
-        this.room = r;
-        this.render();
-      },
-    });
-  }
-
-  show() {
-    const { root } = this.ctx;
-    root.textContent = '';
-    this.info = document.createElement('p');
-    const screen = document.createElement('div');
-    screen.className = 'screen';
-    const h = document.createElement('h1');
-    h.textContent = 'Table started';
-    this.info.className = 'muted';
-    const leave = document.createElement('button');
-    leave.type = 'button';
-    leave.textContent = 'Leave table';
-    leave.addEventListener('click', async () => {
-      try { await this.controller.leaveRoom(this.room.id); } catch { /* already gone */ }
-      switchScreen(new MenuScreen(this.ctx));
-    });
-    screen.append(h, this.info, leave);
-    root.append(screen);
-    this.render();
-    this.controller.connect(this.room.id);
-  }
-
-  render() {
-    if (this.info) {
-      this.info.textContent =
-        `Room ${this.room.status} · gameSessionId ${this.room.gameSessionId || 'pending'} · ` +
-        'gameplay arrives in checkpoint 7.';
-    }
-  }
-
-  destroy() {
-    this.controller.destroy();
-  }
-}
-
 function makeScreenCtx(net, gameInfo) {
   return {
     root: screenRoot(),
     net,
     gameInfo,
     onEnterLobby: (room) => switchScreen(new LobbyScreen(makeScreenCtx(net, gameInfo), room)),
-    onEnterTable: (room) => switchScreen(new TablePlaceholderScreen(makeScreenCtx(net, gameInfo), room)),
+    onEnterTable: (room) => switchScreen(new TableScreen(makeScreenCtx(net, gameInfo), room)),
     onExitToMenu: () => switchScreen(new MenuScreen(makeScreenCtx(net, gameInfo))),
   };
 }
@@ -123,16 +73,31 @@ async function enterApp(net, gameInfo, { production, deepLinkSessionId }) {
   leaveBootScreen();
   const ctx = makeScreenCtx(net, gameInfo);
 
-  // Reconnect path: a non-Closed room restores the lobby or table. The
-  // deep-link session id is honored once gameplay exists (checkpoint 7).
+  // Reconnect path: a non-Closed room restores the lobby or table.
   try {
     const room = await new RoomController(net).myRoom();
     if (room && room.status !== 'Closed') {
-      if (room.status === 'Playing') switchScreen(new TablePlaceholderScreen(ctx, room));
+      if (room.status === 'Playing') switchScreen(new TableScreen(ctx, room));
       else switchScreen(new LobbyScreen(ctx, room));
       return;
     }
   } catch { /* reconnect probe failed — fall through to the menu */ }
+
+  // Invite deep-link (#session_id=): join the session's table directly when it
+  // is still active (its room, if any, was already handled above).
+  if (deepLinkSessionId) {
+    try {
+      const session = await net.client.get(
+        `/api/v1/games/${net.scope}/sessions/${deepLinkSessionId}`);
+      if (session && session.status === 'active') {
+        switchScreen(new TableScreen(ctx, {
+          id: null, status: 'Playing', gameSessionId: session.sessionId,
+          participants: [],
+        }));
+        return;
+      }
+    } catch { /* not our session anymore — fall through */ }
+  }
 
   switchScreen(new MenuScreen(ctx));
 }

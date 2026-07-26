@@ -288,6 +288,49 @@ globalThis.pokerRules = (function () {
     return rules.evaluate(holeCards.concat(board));
   };
 
+  // --- pot accounting ------------------------------------------------------
+
+  // Build main + side pots from per-seat hand commits.
+  // seats: [{ handCommit, folded }] -> [{ amount, eligible: [seatIndex] }].
+  // Folded players' chips stay in the pots they contributed to; a level with
+  // a single eligible contributor is an uncalled bet and returns to them
+  // through the normal payout path.
+  rules.buildPots = function (seats) {
+    const levels = [...new Set(seats.map((s) => s.handCommit).filter((c) => c > 0))]
+      .sort((a, b) => a - b);
+    const pots = [];
+    let prev = 0;
+    for (const level of levels) {
+      const contributors = [];
+      seats.forEach((s, i) => {
+        if (s.handCommit >= level) contributors.push(i);
+      });
+      const amount = (level - prev) * contributors.length;
+      const eligible = contributors.filter((i) => !seats[i].folded);
+      if (amount > 0) pots.push({ amount, eligible });
+      prev = level;
+    }
+    return pots;
+  };
+
+  // Split one pot among winners (seat indexes). Odd chips go one apiece to
+  // the winners closest clockwise from the button (deterministic).
+  rules.splitPot = function (pot, winners, dealerSeat, seatCount) {
+    const share = Math.floor(pot / winners.length);
+    let odd = pot - share * winners.length;
+    const ordered = winners.slice().sort((a, b) => {
+      const da = (a - dealerSeat + seatCount) % seatCount;
+      const db = (b - dealerSeat + seatCount) % seatCount;
+      return da - db;
+    });
+    const payouts = {};
+    for (const w of ordered) {
+      payouts[w] = share + (odd > 0 ? 1 : 0);
+      if (odd > 0) odd -= 1;
+    }
+    return payouts;
+  };
+
   return rules;
 })();
 
@@ -905,53 +948,27 @@ function advanceHand(state, ctx, ev) {
 // Hand completion
 // ---------------------------------------------------------------------------
 
-// Build main + side pots from per-seat hand commits. Folded players' chips
-// stay in the pots they contributed to; a level with a single eligible
-// contributor is an uncalled bet and returns to them through normal payout.
+// Build main + side pots from per-seat hand commits (delegates to the pure
+// shared implementation in pokerRules).
 function buildPots(state) {
-  const levels = [...new Set(
-    state.seats.map((s) => s.handCommit).filter((c) => c > 0))].sort((a, b) => a - b);
-  const pots = [];
-  let prev = 0;
-  for (const level of levels) {
-    const contributors = [];
-    state.seats.forEach((s, i) => {
-      if (s.handCommit >= level) contributors.push(i);
-    });
-    const amount = (level - prev) * contributors.length;
-    const eligible = contributors.filter((i) => !state.seats[i].folded);
-    if (amount > 0) pots.push({ amount, eligible });
-    prev = level;
-  }
-  return pots;
+  return globalThis.pokerRules.buildPots(state.seats);
 }
 
 // Award `pot` to `winners` (seat indexes). Odd chips go one apiece to the
 // winners closest clockwise from the button (deterministic).
 function splitPot(state, pot, winners) {
-  const share = Math.floor(pot / winners.length);
-  let odd = pot - share * winners.length;
-  const ordered = winners.slice().sort((a, b) => {
-    const da = (a - state.dealerSeat + state.seats.length) % state.seats.length;
-    const db = (b - state.dealerSeat + state.seats.length) % state.seats.length;
-    return da - db;
-  });
-  const payouts = {};
-  for (const w of ordered) {
-    payouts[w] = share + (odd > 0 ? 1 : 0);
-    if (odd > 0) odd -= 1;
-  }
-  return payouts;
+  return globalThis.pokerRules.splitPot(pot, winners, state.dealerSeat, state.seats.length);
 }
 
 // Shared epilogue: payouts applied, hand closed, summary/replay recorded,
 // match end checked. `ev` accumulates broadcast payloads for this invocation.
 function finishHand(state, ctx, ev, { winnerSeats, description, revealed, potsWon }) {
+  const totalPot = state.seats.reduce((t, s) => t + s.handCommit, 0);
+  const potSizes = buildPots(state).map((p) => p.amount); // before zeroing
   // Payouts.
   for (const [seat, amount] of Object.entries(potsWon)) {
     state.seats[seat].stack += amount;
   }
-  const totalPot = state.seats.reduce((t, s) => t + s.handCommit, 0);
   for (const s of state.seats) { s.handCommit = 0; s.roundCommit = 0; }
 
   const hand = state.hand;
@@ -995,7 +1012,7 @@ function finishHand(state, ctx, ev, { winnerSeats, description, revealed, potsWo
     stateVersion: state.actionSeq,
     handNumber: state.handNumber,
     winners,
-    pots: buildPots(state).map((p) => p.amount),
+    pots: potSizes,
     revealedCards: revealed,
     description,
   });

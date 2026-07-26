@@ -60,6 +60,32 @@ async function recoverConflict(e, net) {
 }
 
 // ---------------------------------------------------------------------------
+// Invite helpers (transport orchestration, no DOM — unit-tested against a
+// fake controller)
+
+// Invite a friend to `roomId`. One call: the platform notifies the invitee
+// itself (a `game_invite` push the StarHermit dashboard shows as a toast, plus
+// their /me/game-invites inbox), so there is nothing to send alongside it — a
+// second invite through the games API would only notify them twice.
+// `notified` mirrors the response field: false = the friend is not connected
+// right now, null = the platform did not say. Never throws.
+export async function inviteFriend(controller, roomId, toUserId) {
+  try {
+    const invite = await controller.sendInvite(roomId, toUserId);
+    return {
+      seated: true,
+      notified: invite && invite.notified !== undefined ? invite.notified : null,
+      error: null,
+    };
+  } catch (e) {
+    // 409 = already invited or already seated: the seat stands and the first
+    // invite did the notifying.
+    if (e && e.status === 409) return { seated: true, notified: null, error: null };
+    return { seated: false, notified: null, error: e };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main menu
 
 export class MenuScreen {
@@ -335,17 +361,17 @@ export class LobbyScreen {
   }
 
   async invite(friend) {
-    try {
-      await this.controller.sendInvite(this.room.id, friend.userId);
-      this.pendingInvites.add(friend.userId);
-    } catch (e) {
-      // 409 = already invited or already seated: still show as pending.
-      if (e && e.status === 409) this.pendingInvites.add(friend.userId);
-      else {
-        this.showError(e);
-        return;
-      }
+    const name = this.ctx.net.profiles.displayName(friend.userId, friend.username);
+    const res = await inviteFriend(this.controller, this.room.id, friend.userId);
+    if (res.error) {
+      this.showError(res.error);
+      return;
     }
+    this.pendingInvites.add(friend.userId);
+    this.shareNote(res.notified === false
+      ? `${name} was invited, but is not connected right now — StarHermit will ` +
+        'show them the invite when they are.'
+      : `${name} was invited — StarHermit is notifying them now.`);
     this.loadFriends();
   }
 

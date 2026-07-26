@@ -109,6 +109,11 @@ async function enterApp(net, gameInfo, { production, deepLinkSessionId }) {
 
   // Invite deep-link (#session_id=): join the session's table directly when it
   // is still active (its room, if any, was already handled above).
+  //
+  // A dashboard-accepted *room* invite never lands here — accepting one seats
+  // the player, so the reconnect probe above finds the room. This path is for a
+  // games-API invite, whose accept mints a standalone session; honour it as
+  // sent rather than second-guessing it against any pending room invite.
   if (deepLinkSessionId) {
     try {
       const session = await net.client.get(

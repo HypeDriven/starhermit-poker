@@ -72,7 +72,7 @@ The repository is **empty** (git repo, no commits on disk, no files). There is n
 3. **`ctx.random` is one float per invocation** — stretched via an internal PRNG seeded from it (plus monotonic counters) for shuffles and AI variation. No `Math.random`.
 4. **Playing-room host sweep**: a `Playing` room is closed if its host has had no active WS for > 60 s. Host migration happens on explicit leave; clients must keep the realtime socket alive. Documented platform behavior, not game logic.
 5. **No public-room browse endpoint** — discovery is `quick-join` only; Quick Play falls back to create+open on `404`.
-6. **Room invites are friends-only**; the dashboard share link is the documented route for non-friends.
+6. **Room invites are friends-only**; the dashboard share link is the documented route for non-friends. Room invites **do** notify the invitee (`game_invite` push + `GET /api/v1/me/game-invites`, payload `kind: "room"`), so one call per invite is correct and a second games-API invite would double-notify. (Historical note: they did not notify at first — a room invite could be created successfully and reach nobody but a client already polling `GET /rooms/invites`. The platform now emits the push from both invite systems through one path; see the wiki's realtime *Invites* section.)
 7. **Replay = final sessionState snapshot only**; hand history must live inside session state, compacted and size-capped (per-player state byte budget is documented but unquantified).
 8. **Chat has no incremental-fetch parameter** — poll and dedupe by message id; 10 msg/min/user.
 9. **Ready state exists only as a realtime WS control frame** (`{"type":"ready"}`) — no REST field; lobby ready indicators are transient/host-observed.

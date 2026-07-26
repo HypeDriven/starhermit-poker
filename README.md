@@ -25,6 +25,16 @@ table's match and nothing else.
   (404 → create + open). Private tables = lobby-state rooms with friends-only
   invites + the dashboard share link. Empty seats at start are backfilled
   with AI automatically; departed humans convert to AI seats in place.
+- **Invites** — `POST /rooms/{id}/invites` (friends-only, `Lobby`/`Open` only)
+  reserves the seat *and* notifies the friend: the platform emits the
+  `game_invite` push StarHermit shows as a dashboard toast ("*friend* invites
+  you to their table in *game*") and lists in `GET /api/v1/me/game-invites`. The
+  response's `notified` says whether that reached a live connection, which the
+  lobby surfaces to the host (`inviteFriend` in `src/lobby.js`). Accepting from
+  the dashboard seats the player, so they land in this table's lobby on launch —
+  no `#session_id=` deep link involved. Do not send a games-API invite
+  (`/games/poker/invites`) alongside the room invite: same notification, so the
+  friend would be told twice.
 - **Gameplay** — once the room reports `gameSessionId`, clients play over
   `ws/v1/games` with `cmd`/`game` frames; the realtime socket stays open for
   roster and presence.
@@ -57,7 +67,7 @@ table's match and nothing else.
 Tests and checks:
 
 ```bash
-npm test          # node --test test/*.test.js (135 tests, zero dependencies)
+npm test          # node --test test/*.test.js (140 tests, zero dependencies)
 node --check server.js && for f in src/*.js; do node --check "$f"; done
 ```
 

@@ -132,6 +132,10 @@ export class RoomController {
 
   // --- Invites (friends-only, Lobby/Open rooms only) ---
 
+  // The platform notifies the invitee itself: a `game_invite` push their
+  // StarHermit dashboard shows as a toast, plus GET /me/game-invites. The
+  // response's `notified` says whether that reached a live connection, so
+  // nothing else needs sending to make an invite visible.
   sendInvite(roomId, toUserId) {
     return this.net.client.post(`${ROOMS}/${roomId}/invites`, { toUserId });
   }

@@ -67,6 +67,8 @@ export class MenuScreen {
   constructor(ctx) {
     this.ctx = ctx;
     this.busy = false;
+    this.inviteTimer = null;
+    this.invites = [];
   }
 
   show() {
@@ -85,6 +87,8 @@ export class MenuScreen {
       onclick: () => this.go('private'),
     });
 
+    this.inviteSection = el('div', { class: 'invite-inbox', hidden: '' });
+
     this.menu = el('div', { class: 'screen main-menu' },
       el('h1', { text: (gameInfo && gameInfo.name) || GAME.name }),
       el('p', {
@@ -94,6 +98,7 @@ export class MenuScreen {
           : 'No-limit Texas Hold\'em · play money only',
       }),
       el('div', { class: 'menu-actions' }, quickBtn, privateBtn),
+      this.inviteSection,
       el('p', {
         class: 'muted small',
         text: 'Quick Play joins a public table (empty seats are filled by AI). ' +
@@ -102,6 +107,61 @@ export class MenuScreen {
       this.errorLine,
     );
     root.append(this.menu);
+
+    // Room-invite inbox: polled (launch tokens cannot use the chat push socket).
+    this.pollInvites();
+    this.inviteTimer = setInterval(() => this.pollInvites(), GAME.invitePollMs);
+  }
+
+  async pollInvites() {
+    try {
+      this.invites = await new RoomController(this.ctx.net).myInvites() || [];
+    } catch { /* keep the previous list */ }
+    this.renderInvites();
+  }
+
+  renderInvites() {
+    if (!this.inviteSection) return;
+    this.inviteSection.textContent = '';
+    if (!this.invites.length) {
+      this.inviteSection.hidden = true;
+      return;
+    }
+    this.inviteSection.hidden = false;
+    this.inviteSection.append(el('h2', { text: 'Table invites' }));
+    for (const inv of this.invites) {
+      const row = el('div', { class: 'invite-row' },
+        el('span', { text: `${inv.fromUsername || 'A friend'} invites you to a table` }),
+        el('button', {
+          class: 'primary', type: 'button', text: 'Accept',
+          onclick: () => this.answerInvite(inv, true),
+        }),
+        el('button', {
+          type: 'button', text: 'Decline',
+          onclick: () => this.answerInvite(inv, false),
+        }),
+      );
+      this.inviteSection.append(row);
+    }
+  }
+
+  async answerInvite(inv, accept) {
+    const controller = new RoomController(this.ctx.net);
+    try {
+      if (accept) {
+        const room = await controller.acceptInvite(inv.id);
+        this.ctx.onEnterLobby(room);
+        return;
+      }
+      await controller.declineInvite(inv.id);
+      this.invites = this.invites.filter((i) => i.id !== inv.id);
+      this.renderInvites();
+    } catch (e) {
+      // 409: room full/started/closed or we are in another room — drop the invite.
+      this.errorLine.textContent = e.message || String(e);
+      this.errorLine.hidden = false;
+      this.pollInvites();
+    }
   }
 
   async go(mode) {
@@ -124,6 +184,10 @@ export class MenuScreen {
 
   destroy() {
     this.busy = false;
+    if (this.inviteTimer) {
+      clearInterval(this.inviteTimer);
+      this.inviteTimer = null;
+    }
   }
 }
 
@@ -137,6 +201,7 @@ export class LobbyScreen {
     this.room = room;
     this.selfReady = false;
     this.presence = new Map(); // userId -> online
+    this.pendingInvites = new Set(); // userIds with an outstanding room invite
     this.destroyed = false;
 
     this.controller = new RoomController(ctx.net, {
@@ -183,6 +248,7 @@ export class LobbyScreen {
       el('div', { class: 'lobby-actions' },
         this.readyBtn, this.startBtn, this.openBtn, leaveBtn),
       this.errorLine,
+      this.buildInviteSection(),
     );
     root.append(this.screen);
 
@@ -195,6 +261,99 @@ export class LobbyScreen {
       this.showError(e);
     }
     this.controller.connect(this.room.id);
+    this.loadFriends();
+  }
+
+  // --- invites (friends-only while the room is Lobby/Open) ---
+
+  buildInviteSection() {
+    this.friendList = el('div', { class: 'friend-list' },
+      el('p', { class: 'muted small', text: 'Loading friends…' }));
+    this.inviteSection = el('div', { class: 'invite-section' },
+      el('h2', { text: 'Invite players' }),
+      el('button', {
+        type: 'button', text: 'Copy share link',
+        onclick: () => this.copyShareLink(),
+      }),
+      this.friendList,
+    );
+    return this.inviteSection;
+  }
+
+  async loadFriends() {
+    try {
+      // The only friends endpoint a game-scoped launch token may call.
+      const friends = await this.ctx.net.client.get('/api/v1/me/friends') || [];
+      this.renderFriends(friends);
+    } catch {
+      if (this.friendList) {
+        this.friendList.textContent = '';
+        this.friendList.append(el('p', {
+          class: 'muted small', text: 'Could not load the friend list.',
+        }));
+      }
+    }
+  }
+
+  renderFriends(friends) {
+    if (!this.friendList) return;
+    this.friendList.textContent = '';
+    if (!friends.length) {
+      this.friendList.append(el('p', {
+        class: 'muted small',
+        text: 'No friends yet — use the share link to invite someone.',
+      }));
+      return;
+    }
+    for (const f of friends) {
+      const pending = this.pendingInvites.has(f.userId);
+      const btn = el('button', {
+        type: 'button', text: pending ? 'Invited ✓' : 'Invite',
+        onclick: () => this.invite(f),
+      });
+      btn.disabled = pending;
+      this.friendList.append(el('div', { class: 'friend-row' },
+        el('span', { class: `dot${f.online ? ' on' : ''}` }),
+        el('span', { class: 'friend-name', text: f.username }),
+        f.currentGame ? el('span', { class: 'muted small', text: `playing ${f.currentGame}` }) : '',
+        btn,
+      ));
+    }
+  }
+
+  async invite(friend) {
+    try {
+      await this.controller.sendInvite(this.room.id, friend.userId);
+      this.pendingInvites.add(friend.userId);
+    } catch (e) {
+      // 409 = already invited or already seated: still show as pending.
+      if (e && e.status === 409) this.pendingInvites.add(friend.userId);
+      else {
+        this.showError(e);
+        return;
+      }
+    }
+    this.loadFriends();
+  }
+
+  async copyShareLink() {
+    const link = this.controller.shareInviteLink();
+    try {
+      await navigator.clipboard.writeText(link);
+      this.shareNote('Share link copied — the dashboard handles sign-in and friending.');
+    } catch {
+      this.shareNote(link);
+    }
+  }
+
+  shareNote(text) {
+    if (!this.inviteSection) return;
+    let note = this.inviteSection.querySelector('.share-note');
+    if (!note) {
+      note = el('p', { class: 'muted small share-note' });
+      this.inviteSection.append(note);
+    }
+    note.textContent = text;
   }
 
   // --- controller events ---
@@ -278,6 +437,12 @@ export class LobbyScreen {
 
     // Ready toggle label.
     this.readyBtn.textContent = this.selfReady ? 'Unready' : 'Ready';
+
+    // Invites only make sense (and are only accepted by the platform) while
+    // the room is in Lobby/Open.
+    if (this.inviteSection) {
+      this.inviteSection.hidden = room.status !== 'Lobby' && room.status !== 'Open';
+    }
 
     // Host controls: start only when legal; open only from Lobby.
     this.startBtn.hidden = !host;

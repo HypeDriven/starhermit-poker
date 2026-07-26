@@ -130,6 +130,32 @@ export class RoomController {
     return this.net.client.post(`${ROOMS}/quick-join`, { gameSlug: this.net.scope, seats: 1 });
   }
 
+  // --- Invites (friends-only, Lobby/Open rooms only) ---
+
+  sendInvite(roomId, toUserId) {
+    return this.net.client.post(`${ROOMS}/${roomId}/invites`, { toUserId });
+  }
+
+  // The caller's pending room invites (launch tokens see only their own game's).
+  myInvites() {
+    return this.net.client.get(`${ROOMS}/invites`);
+  }
+
+  // Accept seats the caller and returns the room.
+  acceptInvite(inviteId) {
+    return this.net.client.post(`${ROOMS}/invites/${inviteId}/accept`);
+  }
+
+  declineInvite(inviteId) {
+    return this.net.client.post(`${ROOMS}/invites/${inviteId}/decline`);
+  }
+
+  // Documented share-link flow for non-friends: the web dashboard handles
+  // sign-in, friending, launch, and sends the play invite back to the sharer.
+  shareInviteLink() {
+    return `https://dashboard.starhermit.com/game-invite/${this.net.userId}/${this.net.scope}`;
+  }
+
   // --- Realtime WebSocket (roster/presence only; gameplay uses ws/v1/games) ---
 
   connect(roomId) {

@@ -19,6 +19,7 @@ import { showAuthPanel, clearDevToken } from './auth-panel.js';
 import { RoomController } from './realtime-room.js';
 import { MenuScreen, LobbyScreen } from './lobby.js';
 import { TableScreen } from './table.js';
+import { LeaderboardScreen } from './leaderboard.js';
 import { sharedProfiles } from './profiles.js';
 
 const bootScreen = () => document.getElementById('screen-boot');
@@ -67,6 +68,10 @@ function makeScreenCtx(net, gameInfo) {
     onEnterLobby: (room) => switchScreen(new LobbyScreen(makeScreenCtx(net, gameInfo), room)),
     onEnterTable: (room) => switchScreen(new TableScreen(makeScreenCtx(net, gameInfo), room)),
     onExitToMenu: () => switchScreen(new MenuScreen(makeScreenCtx(net, gameInfo))),
+    onShowLeaderboard: () => switchScreen(new LeaderboardScreen({
+      ...makeScreenCtx(net, gameInfo),
+      onBack: () => switchScreen(new MenuScreen(makeScreenCtx(net, gameInfo))),
+    })),
   };
 }
 

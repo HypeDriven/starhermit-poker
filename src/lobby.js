@@ -86,6 +86,10 @@ export class MenuScreen {
       class: 'big', type: 'button', text: 'Private Table',
       onclick: () => this.go('private'),
     });
+    const boardBtn = el('button', {
+      type: 'button', text: 'Leaderboard',
+      onclick: () => this.ctx.onShowLeaderboard && this.ctx.onShowLeaderboard(),
+    });
 
     this.inviteSection = el('div', { class: 'invite-inbox', hidden: '' });
 
@@ -97,7 +101,7 @@ export class MenuScreen {
           ? `Elo ${me.elo} · ${me.wins}W / ${me.losses}L / ${me.draws}D`
           : 'No-limit Texas Hold\'em · play money only',
       }),
-      el('div', { class: 'menu-actions' }, quickBtn, privateBtn),
+      el('div', { class: 'menu-actions' }, quickBtn, privateBtn, boardBtn),
       this.inviteSection,
       el('p', {
         class: 'muted small',

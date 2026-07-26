@@ -557,6 +557,7 @@ function initialState(ctx) {
     schemaVersion: globalThis.pokerRules.SCHEMA_VERSION,
     config,
     roomId: ctx.room ? ctx.room.roomId : null,
+    createdAtMs: ctx.now,
     seats,
     dealerSeat: -1,
     actingSeat: -1,
@@ -1093,7 +1094,90 @@ function finishHandShowdown(state, ctx, ev) {
 
 // Basic match completion (ratings land in checkpoint 17).
 function finishMatch(state, ctx, ev, winnerSeat) {
-  state.matchResult = {
+  state.matchResult = finalizeMatch(state, ctx, winnerSeat);
+  ev.push({
+    type: 'match-complete',
+    stateVersion: state.actionSeq,
+    result: state.matchResult,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Player statistics and ratings
+//
+// MULTIPLAYER ELO (documented formula): every human participant is compared
+// pairwise. For the pair (i, j) the expected score of i is
+//   E = 1 / (1 + 10^((elo_j - elo_i)/400))
+// and the actual score S is 1 when i placed higher, 0.5 for a tie, else 0.
+// The rating change is K=32 times the mean of (S - E) over all of i's
+// opponents (the standard average-over-opponents Elo generalization for
+// free-for-all tables). New ratings are integers; eloUpdates carries only
+// rated HUMAN participants and is the platform's only rating-write path.
+// ---------------------------------------------------------------------------
+
+const ELO_K = 32;
+
+function placementOrder(state, winnerSeat) {
+  // Winner first; the rest by descending final stack (bust-order proxy).
+  const order = [];
+  if (winnerSeat >= 0) order.push(winnerSeat);
+  state.seats
+    .map((s, i) => i)
+    .filter((i) => i !== winnerSeat)
+    .sort((a, b) => state.seats[b].stack - state.seats[a].stack)
+    .forEach((i) => order.push(i));
+  return order;
+}
+
+function computeEloUpdates(state, playerStates, order) {
+  const humans = order.filter((i) => state.seats[i].userId);
+  const elos = humans.map((i) => {
+    const doc = playerStates[state.seats[i].userId] || {};
+    return Number.isFinite(doc.elo) ? doc.elo : 1200;
+  });
+  const updates = {};
+  humans.forEach((seatI, a) => {
+    let scoreSum = 0;
+    let expectSum = 0;
+    humans.forEach((seatJ, b) => {
+      if (a === b) return;
+      scoreSum += a < b ? 1 : 0; // lower order index = better placement
+      expectSum += 1 / (1 + 10 ** ((elos[b] - elos[a]) / 400));
+    });
+    const n = Math.max(1, humans.length - 1);
+    const delta = ELO_K * ((scoreSum - expectSum) / n);
+    updates[state.seats[seatI].userId] = Math.round(elos[a] + delta);
+  });
+  return updates;
+}
+
+function finalizeMatch(state, ctx, winnerSeat) {
+  const order = placementOrder(state, winnerSeat);
+  const playerStates = state._playerStates || {};
+  const eloUpdates = computeEloUpdates(state, playerStates, order);
+
+  const eloBefore = {};
+  const eloAfter = {};
+  const placements = order.map((seatIndex, idx) => {
+    const s = state.seats[seatIndex];
+    const entry = {
+      place: idx + 1,
+      seat: seatIndex,
+      userId: s.userId,
+      name: s.name,
+      stack: s.stack,
+    };
+    if (s.userId) {
+      const doc = playerStates[s.userId] || {};
+      eloBefore[s.userId] = Number.isFinite(doc.elo) ? doc.elo : 1200;
+      eloAfter[s.userId] = eloUpdates[s.userId];
+      entry.eloBefore = eloBefore[s.userId];
+      entry.eloAfter = eloAfter[s.userId];
+    }
+    return entry;
+  });
+
+  return {
     version: 1,
     winnerSeat,
     winnerUserId: winnerSeat >= 0 ? state.seats[winnerSeat].userId : null,
@@ -1101,12 +1185,82 @@ function finishMatch(state, ctx, ev, winnerSeat) {
     hands: state.handNumber,
     endReason: 'last-player-with-chips',
     finalStacks: state.seats.map((s) => s.stack),
+    placements,
+    eloBefore,
+    eloAfter,
+    durationMs: state.createdAtMs ? ctx.now - state.createdAtMs : null,
   };
-  ev.push({
-    type: 'match-complete',
-    stateVersion: state.actionSeq,
-    result: state.matchResult,
-  });
+}
+
+// Update script-owned per-player documents at hand end and match end.
+// Returns true when the map changed (callers include it in their response).
+function updateStats(state, ctx, playerStates, { handEnded, matchEnded }) {
+  let dirty = false;
+  const ensure = (userId) => {
+    const defaults = {
+      elo: 1200, wins: 0, losses: 0, draws: 0,
+      matchesPlayed: 0, handsPlayed: 0, handsWon: 0,
+      totalChipsWon: 0, largestPotWon: 0,
+      currentStreak: 0, bestStreak: 0, recentGames: [],
+    };
+    if (!playerStates[userId]) playerStates[userId] = {};
+    const doc = playerStates[userId];
+    for (const k of Object.keys(defaults)) {
+      if (doc[k] === undefined) {
+        doc[k] = Array.isArray(defaults[k]) ? [] : defaults[k];
+        dirty = true;
+      }
+    }
+    return doc;
+  };
+
+  if (handEnded && state.prevHand) {
+    const record = state.hands[state.hands.length - 1];
+    state.seats.forEach((s, i) => {
+      if (!s.userId) return;
+      const doc = ensure(s.userId);
+      const wasDealt = record && (record.reveal[i] ||
+        record.actions.some((a) => a[0] === i) ||
+        i === record.sb || i === record.bb);
+      if (wasDealt) {
+        doc.handsPlayed += 1;
+        dirty = true;
+      }
+      const won = state.prevHand.winners.find((w) => w.seat === i);
+      if (won) {
+        doc.handsWon += 1;
+        doc.totalChipsWon += won.amount;
+        doc.largestPotWon = Math.max(doc.largestPotWon, won.amount);
+        dirty = true;
+      }
+    });
+  }
+
+  if (matchEnded && state.matchResult) {
+    for (const p of state.matchResult.placements) {
+      if (!p.userId) continue;
+      const doc = ensure(p.userId);
+      doc.matchesPlayed += 1;
+      doc.elo = p.eloAfter;
+      if (p.place === 1) {
+        doc.wins += 1;
+        doc.currentStreak += 1;
+        doc.bestStreak = Math.max(doc.bestStreak, doc.currentStreak);
+      } else {
+        doc.losses += 1;
+        doc.currentStreak = 0;
+      }
+      globalThis.pokerRules.cappedPush(doc.recentGames, {
+        at: globalThis.pokerRules.epochMsToIso(ctx.now),
+        place: p.place,
+        players: state.seats.length,
+        hands: state.handNumber,
+        eloAfter: p.eloAfter,
+      }, LIMITS.recentGames);
+      dirty = true;
+    }
+  }
+  return dirty;
 }
 
 // ---------------------------------------------------------------------------
@@ -1320,6 +1474,26 @@ function aiActionEvent(state, seatIndex, applied) {
 // Entry points
 // ---------------------------------------------------------------------------
 
+// Shared tail for every mutating invocation: refresh stats, finish the
+// session when the match ended, and assemble the response extras.
+function finalizeInvocation(state, ctx, { handsBefore, hadResult, response }) {
+  const ps = state._playerStates || {};
+  const handEnded = state.hands.length > handsBefore;
+  const matchEnded = !!state.matchResult && !hadResult;
+  const dirty = updateStats(state, ctx, ps, { handEnded, matchEnded });
+  delete state._playerStates; // working copy; never persisted in sessionState
+  state.summary = summaryFor(state);
+  response.sessionState = state;
+  if (dirty || matchEnded) response.playerStates = ps;
+  if (matchEnded) {
+    // Returning result ends the scripted session (platform archives the
+    // replay, publishes eloUpdates, and closes the room).
+    response.result = state.matchResult;
+    response.eloUpdates = state.matchResult.eloAfter;
+  }
+  return response;
+}
+
 globalThis.game = {
   createSession(ctx) {
     const state = initialState(ctx);
@@ -1340,6 +1514,7 @@ globalThis.game = {
         : { elo: 1200, wins: 0, losses: 0, draws: 0 };
     }
 
+    state._playerStates = playerStates;
     const broadcast = stateBroadcasts(state);
     if (state.hand.live || ev.length > 0) {
       // hand-started may already sit in ev via the AI loop's chaining.
@@ -1349,12 +1524,10 @@ globalThis.game = {
     }
     for (const e of ev) broadcast.unshift({ to: 'all', data: e });
 
-    return {
-      ok: true,
-      sessionState: state,
-      playerStates,
-      broadcast,
-    };
+    return finalizeInvocation(state, ctx, {
+      handsBefore: 0, hadResult: false,
+      response: { ok: true, playerStates, broadcast },
+    });
   },
 
   onPlayerMessage(ctx) {
@@ -1363,6 +1536,9 @@ globalThis.game = {
       return fail('No active session state');
     }
     syncPresence(state, ctx);
+    state._playerStates = ctx.playerStates || {};
+    const handsBefore = state.hands.length;
+    const hadResult = !!state.matchResult;
 
     // Lazy timeout enforcement: an expired deadline is resolved before the
     // incoming command is validated, so a delayed command from a timed-out
@@ -1399,19 +1575,21 @@ globalThis.game = {
     if (data.type === 'sync') {
       const mine = privateProjection(state, msg.from);
       if (mine.seat < 0) return fail('You are not seated at this table');
-      return {
-        ok: true,
-        sessionState: state,
-        broadcast: withEvents([{
-          to: [msg.from],
-          data: {
-            type: 'state',
-            stateVersion: state.actionSeq,
-            you: mine,
-            publicState: publicProjection(state),
-          },
-        }]),
-      };
+      return finalizeInvocation(state, ctx, {
+        handsBefore, hadResult,
+        response: {
+          ok: true,
+          broadcast: withEvents([{
+            to: [msg.from],
+            data: {
+              type: 'state',
+              stateVersion: state.actionSeq,
+              you: mine,
+              publicState: publicProjection(state),
+            },
+          }]),
+        },
+      });
     }
 
     // Preference commands: allowed from any seated human, in or out of a hand.
@@ -1424,8 +1602,10 @@ globalThis.game = {
       if (typeof data.enabled !== 'boolean') return fail('enabled must be a boolean');
       seat.sitOutNext = data.enabled;
       state.actionSeq += 1;
-      state.summary = summaryFor(state);
-      return { ok: true, sessionState: state, broadcast: withEvents(stateBroadcasts(state)) };
+      return finalizeInvocation(state, ctx, {
+        handsBefore, hadResult,
+        response: { ok: true, broadcast: withEvents(stateBroadcasts(state)) },
+      });
     }
 
     if (data.type === 'show-cards') {
@@ -1434,8 +1614,10 @@ globalThis.game = {
       // when the hand completes (checkpoint 10).
       seat.showCards = data.enabled;
       state.actionSeq += 1;
-      state.summary = summaryFor(state);
-      return { ok: true, sessionState: state, broadcast: withEvents(stateBroadcasts(state)) };
+      return finalizeInvocation(state, ctx, {
+        handsBefore, hadResult,
+        response: { ok: true, broadcast: withEvents(stateBroadcasts(state)) },
+      });
     }
 
     // Gameplay actions: only the acting human seat, only during a live hand.
@@ -1470,8 +1652,10 @@ globalThis.game = {
         if (startHand(state, ctx)) ev.push(handStartedBroadcast(state).data);
       }
 
-      state.summary = summaryFor(state);
-      return { ok: true, sessionState: state, broadcast: withEvents(stateBroadcasts(state)) };
+      return finalizeInvocation(state, ctx, {
+        handsBefore, hadResult,
+        response: { ok: true, broadcast: withEvents(stateBroadcasts(state)) },
+      });
     }
 
     return fail('Unknown command: ' + data.type);
@@ -1481,6 +1665,9 @@ globalThis.game = {
     const state = ctx.sessionState;
     if (!state) return { ok: true };
     syncPresence(state, ctx);
+    state._playerStates = ctx.playerStates || {};
+    const handsBefore = state.hands.length;
+    const hadResult = !!state.matchResult;
 
     const ev = [];
     processExpiredDeadline(state, ctx, ev);
@@ -1493,10 +1680,11 @@ globalThis.game = {
     if (!state.hand.live && !state.matchResult) {
       if (startHand(state, ctx)) ev.push(handStartedBroadcast(state).data);
     }
-    state.summary = summaryFor(state);
-    if (ev.length === 0) return { ok: true, sessionState: state };
     const broadcast = stateBroadcasts(state);
     for (const e of ev) broadcast.unshift({ to: 'all', data: e });
-    return { ok: true, sessionState: state, broadcast };
+    return finalizeInvocation(state, ctx, {
+      handsBefore, hadResult,
+      response: { ok: true, broadcast: ev.length ? broadcast : undefined },
+    });
   },
 };

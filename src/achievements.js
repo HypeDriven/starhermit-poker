@@ -43,9 +43,9 @@ export function deriveUnlocks(evidence) {
   if ((e.bestStreak || 0) >= 3) unlocked.add('streak-three');
   if ((e.eliminations || 0) >= 5) unlocked.add('defeat-five');
   for (const h of e.winningHands || []) {
-    if (h.category >= 6) unlocked.add('win-full-house');
-    if (h.category >= 7) unlocked.add('win-quads');
-    if (h.category >= 8) unlocked.add('win-straight-flush');
+    if (h.category === 6) unlocked.add('win-full-house');
+    if (h.category === 7) unlocked.add('win-quads');
+    if (h.category === 8) unlocked.add('win-straight-flush');
     if (h.allIn) unlocked.add('win-all-in');
     if ((h.pot || 0) >= 10000) unlocked.add('win-10k-pot');
   }

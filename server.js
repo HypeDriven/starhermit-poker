@@ -154,6 +154,140 @@ globalThis.pokerRules = (function () {
     return arr;
   };
 
+  // --- hand evaluator ------------------------------------------------------
+  // Evaluate the best 5-card hand from 5-7 card ints. Returns
+  // { score: [category, t1..t5], category, description } where score arrays
+  // compare lexicographically (higher wins). Categories:
+  //   8 straight flush, 7 quads, 6 full house, 5 flush, 4 straight,
+  //   3 trips, 2 two pair, 1 one pair, 0 high card.
+  // Deterministic: no randomness, no host dependencies.
+
+  const CATEGORY_NAMES = [
+    'High Card', 'One Pair', 'Two Pair', 'Three of a Kind',
+    'Straight', 'Flush', 'Full House', 'Four of a Kind', 'Straight Flush',
+  ];
+
+  // Highest straight top-rank in a rank-presence set, or -1. The wheel
+  // (A-2-3-4-5) counts as five-high (top rank index 3).
+  function straightTop(present) {
+    for (let hi = 12; hi >= 4; hi--) {
+      if (present[hi] && present[hi - 1] && present[hi - 2] && present[hi - 3] && present[hi - 4]) {
+        return hi;
+      }
+    }
+    if (present[12] && present[0] && present[1] && present[2] && present[3]) return 3;
+    return -1;
+  }
+
+  const RANK_WORDS = ['Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight',
+    'Nine', 'Ten', 'Jack', 'Queen', 'King', 'Ace'];
+  const RANK_PLURAL = ['Twos', 'Threes', 'Fours', 'Fives', 'Sixes', 'Sevens',
+    'Eights', 'Nines', 'Tens', 'Jacks', 'Queens', 'Kings', 'Aces'];
+
+  rules.evaluate = function (cards) {
+    const rankCount = new Array(13).fill(0);
+    const suitRanks = [[], [], [], []];
+    for (const c of cards) {
+      rankCount[c % 13] += 1;
+      suitRanks[(c / 13) | 0].push(c % 13);
+    }
+    const desc = (a, b) => b - a;
+
+    // Flush?
+    let flushRanks = null;
+    for (let s = 0; s < 4; s++) {
+      if (suitRanks[s].length >= 5) {
+        flushRanks = suitRanks[s].sort(desc);
+        break;
+      }
+    }
+
+    // Straight flush?
+    if (flushRanks) {
+      const present = new Array(13).fill(false);
+      for (const r of flushRanks) present[r] = true;
+      const top = straightTop(present);
+      if (top >= 0) {
+        return {
+          score: [8, top, 0, 0, 0, 0], category: 8,
+          description: `${CATEGORY_NAMES[8]}, ${RANK_WORDS[top]} high`,
+        };
+      }
+    }
+
+    // Groups: ranks sorted by (count desc, rank desc).
+    const groups = [];
+    for (let r = 0; r < 13; r++) {
+      if (rankCount[r] > 0) groups.push({ rank: r, count: rankCount[r] });
+    }
+    groups.sort((a, b) => (b.count - a.count) || (b.rank - a.rank));
+
+    const singles = groups.filter((g) => g.count === 1).map((g) => g.rank).sort(desc);
+    const pad5 = (arr) => {
+      const out = arr.slice(0, 5);
+      while (out.length < 5) out.push(0);
+      return out;
+    };
+    const make = (category, tieRanks, description) => ({
+      score: [category, ...pad5(tieRanks)], category, description,
+    });
+
+    // Four of a kind.
+    if (groups[0].count === 4) {
+      return make(7, [groups[0].rank, singles[0] ?? 0],
+        `${CATEGORY_NAMES[7]}, ${RANK_PLURAL[groups[0].rank]}`);
+    }
+    // Full house (a second trips group plays as the pair).
+    const trips = groups.filter((g) => g.count === 3);
+    const pairs = groups.filter((g) => g.count === 2);
+    if (trips.length >= 1 && (pairs.length >= 1 || trips.length >= 2)) {
+      const pairRank = pairs.length >= 1 ? pairs[0].rank : trips[1].rank;
+      return make(6, [trips[0].rank, pairRank],
+        `${CATEGORY_NAMES[6]}, ${RANK_PLURAL[trips[0].rank]} over ${RANK_PLURAL[pairRank]}`);
+    }
+    // Flush.
+    if (flushRanks) {
+      return make(5, flushRanks, `${CATEGORY_NAMES[5]}, ${RANK_WORDS[flushRanks[0]]} high`);
+    }
+    // Straight.
+    const present = new Array(13).fill(false);
+    for (const g of groups) present[g.rank] = true;
+    const top = straightTop(present);
+    if (top >= 0) {
+      return make(4, [top], `${CATEGORY_NAMES[4]}, ${RANK_WORDS[top]} high`);
+    }
+    // Three of a kind.
+    if (trips.length === 1) {
+      return make(3, [trips[0].rank, ...singles],
+        `${CATEGORY_NAMES[3]}, ${RANK_PLURAL[trips[0].rank]}`);
+    }
+    // Two pair.
+    if (pairs.length >= 2) {
+      const p = pairs.map((x) => x.rank).sort(desc);
+      return make(2, [p[0], p[1], singles[0] ?? 0],
+        `${CATEGORY_NAMES[2]}, ${RANK_PLURAL[p[0]]} and ${RANK_PLURAL[p[1]]}`);
+    }
+    // One pair.
+    if (pairs.length === 1) {
+      return make(1, [pairs[0].rank, ...singles],
+        `${CATEGORY_NAMES[1]}, ${RANK_PLURAL[pairs[0].rank]}`);
+    }
+    return make(0, singles, `${CATEGORY_NAMES[0]}, ${RANK_WORDS[singles[0]]}`);
+  };
+
+  // -1 / 0 / 1 lexicographic score comparison.
+  rules.compareScores = function (a, b) {
+    for (let i = 0; i < 6; i++) {
+      if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
+    }
+    return 0;
+  };
+
+  // Best evaluation for a player: 2 hole cards + board (3-5 cards).
+  rules.evaluateHoldem = function (holeCards, board) {
+    return rules.evaluate(holeCards.concat(board));
+  };
+
   return rules;
 })();
 
@@ -310,7 +444,10 @@ function privateProjection(state, userId) {
     holeCards: state.hand.live && state.hand.holes[seatIndex]
       ? state.hand.holes[seatIndex].slice()
       : null,
-    legalActions: null, // checkpoint 9 computes real legal actions
+    legalActions: state.hand.live && state.actingSeat === seatIndex &&
+      !s.folded && !s.allIn
+      ? legalActions(state, seatIndex)
+      : null,
   };
 }
 
@@ -516,11 +653,12 @@ function startHand(state, ctx) {
   }
   const bbPosted = postChips(state, bbSeat, state.config.bigBlind);
   const sbPosted = postChips(state, sbSeat, state.config.smallBlind);
+  // Blinds are forced bets, not voluntary actions: lastActionSeq stays -1 so
+  // the big blind keeps their preflop option and round completion requires a
+  // real action from every contesting seat.
   state.actionSeq += 1;
-  state.seats[sbSeat].lastActionSeq = state.actionSeq;
   logAction(state, sbSeat, 'blind', sbPosted);
   state.actionSeq += 1;
-  state.seats[bbSeat].lastActionSeq = state.actionSeq;
   logAction(state, bbSeat, 'blind', bbPosted);
 
   hand.currentBet = bbPosted;
@@ -550,6 +688,408 @@ function handStartedBroadcast(state) {
       bigBlindSeat: state.hand.bigBlindSeat,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Betting engine
+//
+// RAISE CONVENTION (enforced everywhere): bet/raise `amount` is the player's
+// NEW TOTAL contribution for the current betting round (their roundCommit
+// after the action), never the amount added. The client slider, presets,
+// action log, and replays all use the same convention.
+// ---------------------------------------------------------------------------
+
+// Seats still contesting the pot (dealt in and not folded).
+function contestingSeats(state) {
+  const out = [];
+  state.seats.forEach((s, i) => {
+    if (state.hand.holes[i] && !s.folded) out.push(i);
+  });
+  return out;
+}
+
+// Seats that can still make a voluntary action this round.
+function actionableSeats(state) {
+  return contestingSeats(state).filter((i) => !state.seats[i].allIn);
+}
+
+// Whether this seat is allowed to raise (reopening rule): a player who has
+// already acted may only re-raise if a FULL raise happened after their last
+// action. Short all-ins do not reopen the action.
+function raiseReopened(state, seatIndex) {
+  const s = state.seats[seatIndex];
+  return s.lastActionSeq < 0 || state.hand.lastFullRaiseSeq > s.lastActionSeq;
+}
+
+// Legal-action guidance for the acting seat (also drives the client UI).
+function legalActions(state, seatIndex) {
+  const hand = state.hand;
+  const s = state.seats[seatIndex];
+  const toCall = hand.currentBet - s.roundCommit;
+  const maxTotal = s.roundCommit + s.stack;
+  const canBet = hand.currentBet === 0 && s.stack > 0;
+  const canRaise = hand.currentBet > 0 && maxTotal > hand.currentBet &&
+    raiseReopened(state, seatIndex);
+  return {
+    canFold: true,
+    canCheck: toCall === 0,
+    callAmount: Math.max(0, Math.min(toCall, s.stack)),
+    canBet,
+    canRaise,
+    minimumAmount: canBet
+      ? Math.min(state.config.bigBlind, maxTotal)
+      : (canRaise ? Math.min(hand.currentBet + hand.lastFullRaise, maxTotal) : maxTotal),
+    maximumAmount: maxTotal,
+  };
+}
+
+// Apply a voluntary action for the acting seat. Returns an error string, or
+// null on success (state mutated, action logged, sequence advanced).
+function applyPlayerAction(state, seatIndex, type, amount) {
+  const rules = globalThis.pokerRules;
+  const hand = state.hand;
+  const s = state.seats[seatIndex];
+  const toCall = hand.currentBet - s.roundCommit;
+  const maxTotal = s.roundCommit + s.stack;
+
+  let action = type;
+  let newTotal = null;
+
+  if (type === 'fold') {
+    s.folded = true;
+  } else if (type === 'check') {
+    if (toCall > 0) return { error: 'Cannot check — there is a bet to call' };
+  } else if (type === 'call') {
+    if (toCall <= 0) return { error: 'Nothing to call' };
+    newTotal = s.roundCommit + Math.min(toCall, s.stack);
+  } else if (type === 'bet') {
+    if (hand.currentBet !== 0) return { error: 'Cannot bet — there is already a bet this round' };
+    if (!rules.isValidChips(amount)) return { error: 'Bet amount must be a non-negative integer' };
+    if (amount > maxTotal) return { error: 'Bet exceeds your stack' };
+    if (amount < state.config.bigBlind && amount !== maxTotal) {
+      return { error: `Minimum bet is ${state.config.bigBlind}` };
+    }
+    if (amount <= 0) return { error: 'Bet must be positive' };
+    newTotal = amount;
+  } else if (type === 'raise') {
+    if (hand.currentBet === 0) return { error: 'Cannot raise — use bet' };
+    if (!rules.isValidChips(amount)) return { error: 'Raise amount must be a non-negative integer' };
+    if (amount > maxTotal) return { error: 'Raise exceeds your stack' };
+    if (amount <= hand.currentBet) return { error: 'Raise must exceed the current bet' };
+    const minTotal = hand.currentBet + hand.lastFullRaise;
+    if (amount < minTotal && amount !== maxTotal) {
+      return { error: `Minimum raise total is ${Math.min(minTotal, maxTotal)}` };
+    }
+    if (!raiseReopened(state, seatIndex) && amount > hand.currentBet) {
+      return { error: 'Action is closed — a full raise has not occurred since your last action' };
+    }
+    newTotal = amount;
+  } else if (type === 'all-in') {
+    newTotal = maxTotal;
+    if (hand.currentBet === 0) action = 'bet';
+    else if (newTotal > hand.currentBet) action = 'raise';
+    else action = 'call';
+  } else {
+    return 'Unknown action: ' + type;
+  }
+
+  // Commit chips and update raise tracking.
+  state.actionSeq += 1;
+  s.lastActionSeq = state.actionSeq;
+  if (newTotal !== null) {
+    const posted = postChips(state, seatIndex, newTotal - s.roundCommit);
+    if (newTotal > hand.currentBet) {
+      const raiseSize = newTotal - hand.currentBet;
+      const isFullRaise = hand.currentBet === 0
+        ? newTotal >= state.config.bigBlind || s.allIn
+        : raiseSize >= hand.lastFullRaise;
+      if (isFullRaise) {
+        hand.lastFullRaise = hand.currentBet === 0 ? newTotal : raiseSize;
+        hand.lastFullRaiseSeq = state.actionSeq;
+      }
+      hand.currentBet = newTotal;
+    }
+    hand.minRaiseTotal = hand.currentBet + hand.lastFullRaise;
+    logAction(state, seatIndex, action === type ? type : action, posted);
+    return { action, amount: posted, error: null };
+  }
+  logAction(state, seatIndex, type, 0);
+  return { action: type, amount: 0, error: null };
+}
+
+// ---------------------------------------------------------------------------
+// Hand progression
+// ---------------------------------------------------------------------------
+
+function setActor(state, ctx, seatIndex) {
+  state.actingSeat = seatIndex;
+  state.turnDeadlineMs = seatIndex >= 0
+    ? ctx.now + state.config.turnDurationSeconds * 1000
+    : 0;
+}
+
+function resetRound(state) {
+  const hand = state.hand;
+  for (const s of state.seats) {
+    s.roundCommit = 0;
+    s.lastActionSeq = -1;
+  }
+  hand.currentBet = 0;
+  hand.lastFullRaise = state.config.bigBlind;
+  hand.lastFullRaiseSeq = -1;
+  hand.minRaiseTotal = state.config.bigBlind;
+}
+
+function dealStreet(state) {
+  const hand = state.hand;
+  if (hand.street === 'preflop') {
+    hand.burn.push(hand.deck.pop());
+    for (let i = 0; i < 3; i++) hand.board.push(hand.deck.pop());
+    hand.street = 'flop';
+  } else if (hand.street === 'flop' || hand.street === 'turn') {
+    hand.burn.push(hand.deck.pop());
+    hand.board.push(hand.deck.pop());
+    hand.street = hand.street === 'flop' ? 'turn' : 'river';
+  }
+}
+
+// Is the current betting round complete? Every contesting seat that can still
+// act must have acted since the street began and matched the current bet.
+function bettingRoundComplete(state) {
+  const hand = state.hand;
+  for (const i of contestingSeats(state)) {
+    const s = state.seats[i];
+    if (s.allIn) continue;
+    if (s.lastActionSeq < 0) return false; // has not acted this street
+    if (s.roundCommit !== hand.currentBet) return false;
+  }
+  return true;
+}
+
+// Advance after a voluntary action: end the hand early, close the round, deal
+// the next street, or move the action to the next seat.
+function advanceHand(state, ctx, ev) {
+  const contesting = contestingSeats(state);
+  if (contesting.length === 1) {
+    finishHandFold(state, ctx, ev, contesting[0]);
+    return;
+  }
+
+  if (!bettingRoundComplete(state)) {
+    const next = nextSeat(state, state.actingSeat,
+      (i) => state.hand.holes[i] && !state.seats[i].folded && !state.seats[i].allIn);
+    setActor(state, ctx, next);
+    return;
+  }
+
+  // Street complete. Move to the next street or showdown; streets where no
+  // one can act (everyone all-in) run out automatically.
+  for (;;) {
+    if (state.hand.street === 'river') {
+      finishHandShowdown(state, ctx, ev);
+      return;
+    }
+    dealStreet(state);
+    resetRound(state);
+    const first = nextSeat(state, state.dealerSeat,
+      (i) => state.hand.holes[i] && !state.seats[i].folded && !state.seats[i].allIn);
+    if (first >= 0) {
+      setActor(state, ctx, first);
+      return;
+    }
+    // No one can act: keep running out the board.
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hand completion
+// ---------------------------------------------------------------------------
+
+// Build main + side pots from per-seat hand commits. Folded players' chips
+// stay in the pots they contributed to; a level with a single eligible
+// contributor is an uncalled bet and returns to them through normal payout.
+function buildPots(state) {
+  const levels = [...new Set(
+    state.seats.map((s) => s.handCommit).filter((c) => c > 0))].sort((a, b) => a - b);
+  const pots = [];
+  let prev = 0;
+  for (const level of levels) {
+    const contributors = [];
+    state.seats.forEach((s, i) => {
+      if (s.handCommit >= level) contributors.push(i);
+    });
+    const amount = (level - prev) * contributors.length;
+    const eligible = contributors.filter((i) => !state.seats[i].folded);
+    if (amount > 0) pots.push({ amount, eligible });
+    prev = level;
+  }
+  return pots;
+}
+
+// Award `pot` to `winners` (seat indexes). Odd chips go one apiece to the
+// winners closest clockwise from the button (deterministic).
+function splitPot(state, pot, winners) {
+  const share = Math.floor(pot / winners.length);
+  let odd = pot - share * winners.length;
+  const ordered = winners.slice().sort((a, b) => {
+    const da = (a - state.dealerSeat + state.seats.length) % state.seats.length;
+    const db = (b - state.dealerSeat + state.seats.length) % state.seats.length;
+    return da - db;
+  });
+  const payouts = {};
+  for (const w of ordered) {
+    payouts[w] = share + (odd > 0 ? 1 : 0);
+    if (odd > 0) odd -= 1;
+  }
+  return payouts;
+}
+
+// Shared epilogue: payouts applied, hand closed, summary/replay recorded,
+// match end checked. `ev` accumulates broadcast payloads for this invocation.
+function finishHand(state, ctx, ev, { winnerSeats, description, revealed, potsWon }) {
+  // Payouts.
+  for (const [seat, amount] of Object.entries(potsWon)) {
+    state.seats[seat].stack += amount;
+  }
+  const totalPot = state.seats.reduce((t, s) => t + s.handCommit, 0);
+  for (const s of state.seats) { s.handCommit = 0; s.roundCommit = 0; }
+
+  const hand = state.hand;
+  hand.live = false;
+  hand.reveal = revealed;
+  state.actionSeq += 1;
+  state.actingSeat = -1;
+  state.turnDeadlineMs = 0;
+
+  const winners = winnerSeats.map((seat) => ({
+    seat,
+    amount: potsWon[seat] || 0,
+    name: state.seats[seat].name,
+  }));
+
+  state.prevHand = {
+    handNumber: state.handNumber,
+    dealer: state.dealerSeat,
+    winners,
+    description,
+    pot: totalPot,
+    board: hand.board.slice(),
+    revealed,
+  };
+  // Compact replay record.
+  globalThis.pokerRules.cappedPush(state.hands, {
+    n: state.handNumber,
+    dealer: state.dealerSeat,
+    sb: hand.smallBlindSeat,
+    bb: hand.bigBlindSeat,
+    board: hand.board.slice(),
+    actions: state.log.filter((l) => l[1] === state.handNumber)
+      .map((l) => [l[2], l[3], l[4]]),
+    reveal: revealed,
+    winners,
+    pot: totalPot,
+  }, LIMITS.handHistory);
+
+  ev.push({
+    type: 'hand-complete',
+    stateVersion: state.actionSeq,
+    handNumber: state.handNumber,
+    winners,
+    pots: buildPots(state).map((p) => p.amount),
+    revealedCards: revealed,
+    description,
+  });
+
+  // Eliminations are applied at the next startHand; the match ends when at
+  // most one seat still has chips.
+  const withChips = state.seats.filter((s) => s.stack > 0 || s.handCommit > 0);
+  if (withChips.length <= 1 && !state.matchResult) {
+    finishMatch(state, ctx, ev, withChips.length === 1
+      ? state.seats.indexOf(withChips[0]) : -1);
+  }
+}
+
+function finishHandFold(state, ctx, ev, winnerSeat) {
+  const pot = state.seats.reduce((t, s) => t + s.handCommit, 0);
+  finishHand(state, ctx, ev, {
+    winnerSeats: [winnerSeat],
+    description: `${state.seats[winnerSeat].name} wins ${pot} (everyone else folded)`,
+    revealed: voluntaryReveals(state),
+    potsWon: { [winnerSeat]: pot },
+  });
+}
+
+// Folded players who opted to show their cards.
+function voluntaryReveals(state) {
+  const out = {};
+  state.seats.forEach((s, i) => {
+    if (s.folded && s.showCards && state.hand.holes[i]) out[i] = state.hand.holes[i].slice();
+  });
+  return out;
+}
+
+function finishHandShowdown(state, ctx, ev) {
+  const rules = globalThis.pokerRules;
+  const contesting = contestingSeats(state);
+
+  // Evaluate every contesting hand.
+  const scores = {};
+  for (const i of contesting) {
+    scores[i] = rules.evaluateHoldem(state.hand.holes[i], state.hand.board);
+  }
+
+  // Showdown reveals every contesting hand plus voluntary folded shows.
+  const revealed = voluntaryReveals(state);
+  for (const i of contesting) revealed[i] = state.hand.holes[i].slice();
+
+  // Distribute each pot among its eligible winners.
+  const potsWon = {};
+  const potDescriptions = [];
+  for (const pot of buildPots(state)) {
+    const eligible = pot.eligible.filter((i) => contesting.includes(i));
+    if (eligible.length === 0) continue;
+    let best = null;
+    let winners = [];
+    for (const i of eligible) {
+      if (!best || rules.compareScores(scores[i].score, best) > 0) {
+        best = scores[i].score;
+        winners = [i];
+      } else if (rules.compareScores(scores[i].score, best) === 0) {
+        winners.push(i);
+      }
+    }
+    const payouts = splitPot(state, pot.amount, winners);
+    for (const [seat, amount] of Object.entries(payouts)) {
+      potsWon[seat] = (potsWon[seat] || 0) + amount;
+    }
+    potDescriptions.push(
+      `${winners.map((w) => state.seats[w].name).join(', ')} — ${scores[winners[0]].description}`);
+  }
+
+  finishHand(state, ctx, ev, {
+    winnerSeats: Object.keys(potsWon).map(Number),
+    description: potDescriptions.join(' · '),
+    revealed,
+    potsWon,
+  });
+}
+
+// Basic match completion (ratings land in checkpoint 17).
+function finishMatch(state, ctx, ev, winnerSeat) {
+  state.matchResult = {
+    version: 1,
+    winnerSeat,
+    winnerUserId: winnerSeat >= 0 ? state.seats[winnerSeat].userId : null,
+    winnerName: winnerSeat >= 0 ? state.seats[winnerSeat].name : null,
+    hands: state.handNumber,
+    endReason: 'last-player-with-chips',
+    finalStacks: state.seats.map((s) => s.stack),
+  };
+  ev.push({
+    type: 'match-complete',
+    stateVersion: state.actionSeq,
+    result: state.matchResult,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -645,7 +1185,46 @@ globalThis.game = {
       return { ok: true, sessionState: state, broadcast: stateBroadcasts(state) };
     }
 
-    return fail('Unknown or not-yet-legal command: ' + data.type);
+    // Gameplay actions: only the acting human seat, only during a live hand.
+    const ACTIONS = ['fold', 'check', 'call', 'bet', 'raise', 'all-in'];
+    if (ACTIONS.includes(data.type)) {
+      if (!state.hand.live) return fail('No hand is running');
+      if (state.actingSeat !== seatIndex) return fail('It is not your turn');
+      if (seat.folded) return fail('You have folded');
+      if (seat.allIn) return fail('You are all-in');
+      if (seat.eliminated) return fail('You are eliminated');
+      if ((data.type === 'bet' || data.type === 'raise') &&
+          !globalThis.pokerRules.isValidChips(data.amount)) {
+        return fail('amount must be a non-negative safe integer');
+      }
+
+      const ev = [];
+      const applied = applyPlayerAction(state, seatIndex, data.type, data.amount);
+      if (applied.error) return fail(applied.error);
+      ev.push({
+        type: 'action',
+        stateVersion: state.actionSeq,
+        handNumber: state.handNumber,
+        seat: seatIndex,
+        action: applied.action,
+        amount: applied.amount,
+        pot: state.seats.reduce((t, s) => t + s.handCommit, 0),
+      });
+      advanceHand(state, ctx, ev);
+
+      // Chain straight into the next hand when this one ended (keeps the game
+      // moving without waiting for a tick).
+      if (!state.hand.live && !state.matchResult) {
+        if (startHand(state, ctx)) ev.push(handStartedBroadcast(state).data);
+      }
+
+      state.summary = summaryFor(state);
+      const broadcast = stateBroadcasts(state);
+      for (const e of ev) broadcast.unshift({ to: 'all', data: e });
+      return { ok: true, sessionState: state, broadcast };
+    }
+
+    return fail('Unknown command: ' + data.type);
   },
 
   onTick(ctx) {

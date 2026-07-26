@@ -1110,6 +1110,57 @@ function finishMatch(state, ctx, ev, winnerSeat) {
 }
 
 // ---------------------------------------------------------------------------
+// Turn timeouts
+//
+// Deadlines live in state.turnDeadlineMs (ctx.now-based). Enforcement runs at
+// the top of EVERY invocation (lazy) and on every platform tick — the firing
+// granularity is therefore the tick interval (see README's limitations).
+// A timeout auto-checks when checking is legal, otherwise auto-folds; the
+// action is logged as timeout-check/timeout-fold. Once processed, the turn
+// has advanced (new actingSeat + fresh deadline), so duplicate ticks cannot
+// double-apply, and a delayed command from the timed-out player is rejected
+// by the normal out-of-turn validation.
+// ---------------------------------------------------------------------------
+
+function applyTimeout(state, seatIndex) {
+  const s = state.seats[seatIndex];
+  const toCall = state.hand.currentBet - s.roundCommit;
+  state.actionSeq += 1;
+  s.lastActionSeq = state.actionSeq;
+  if (toCall <= 0) {
+    logAction(state, seatIndex, 'timeout-check', 0);
+    return { action: 'timeout-check', amount: 0 };
+  }
+  s.folded = true;
+  logAction(state, seatIndex, 'timeout-fold', 0);
+  return { action: 'timeout-fold', amount: 0 };
+}
+
+// Process at most one expired deadline (each expiry resets the next actor's
+// deadline). Returns true when a timeout fired. AI seats are skipped — the AI
+// driver (checkpoint 12) acts for them in the same tick sweep.
+function processExpiredDeadline(state, ctx, ev) {
+  if (!state.hand.live || state.matchResult) return false;
+  if (state.actingSeat < 0) return false;
+  if (!state.turnDeadlineMs || ctx.now <= state.turnDeadlineMs) return false;
+  const seatIndex = state.actingSeat;
+  if (state.seats[seatIndex].ai) return false;
+
+  const applied = applyTimeout(state, seatIndex);
+  ev.push({
+    type: 'action',
+    stateVersion: state.actionSeq,
+    handNumber: state.handNumber,
+    seat: seatIndex,
+    action: applied.action,
+    amount: applied.amount,
+    pot: state.seats.reduce((t, s) => t + s.handCommit, 0),
+  });
+  advanceHand(state, ctx, ev);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Entry points
 // ---------------------------------------------------------------------------
 
@@ -1148,6 +1199,17 @@ globalThis.game = {
     }
     syncPresence(state, ctx);
 
+    // Lazy timeout enforcement: an expired deadline is resolved before the
+    // incoming command is validated, so a delayed command from a timed-out
+    // player fails the normal out-of-turn check below.
+    const ev = [];
+    processExpiredDeadline(state, ctx, ev);
+    // Chain the next hand when a timeout ended this one (same behavior as a
+    // timeout processed by onTick).
+    if (ev.length > 0 && !state.hand.live && !state.matchResult) {
+      if (startHand(state, ctx)) ev.push(handStartedBroadcast(state).data);
+    }
+
     const msg = ctx.message || {};
     const data = msg.data;
     if (!data || typeof data !== 'object' || typeof data.type !== 'string') {
@@ -1160,13 +1222,19 @@ globalThis.game = {
     }
     if (state.matchResult) return fail('The match is over');
 
+    // Merge any timeout-transition events into this invocation's broadcasts.
+    const withEvents = (broadcast) => {
+      for (const e of ev) broadcast.unshift({ to: 'all', data: e });
+      return broadcast;
+    };
+
     if (data.type === 'sync') {
       const mine = privateProjection(state, msg.from);
       if (mine.seat < 0) return fail('You are not seated at this table');
       return {
         ok: true,
         sessionState: state,
-        broadcast: [{
+        broadcast: withEvents([{
           to: [msg.from],
           data: {
             type: 'state',
@@ -1174,7 +1242,7 @@ globalThis.game = {
             you: mine,
             publicState: publicProjection(state),
           },
-        }],
+        }]),
       };
     }
 
@@ -1189,7 +1257,7 @@ globalThis.game = {
       seat.sitOutNext = data.enabled;
       state.actionSeq += 1;
       state.summary = summaryFor(state);
-      return { ok: true, sessionState: state, broadcast: stateBroadcasts(state) };
+      return { ok: true, sessionState: state, broadcast: withEvents(stateBroadcasts(state)) };
     }
 
     if (data.type === 'show-cards') {
@@ -1199,7 +1267,7 @@ globalThis.game = {
       seat.showCards = data.enabled;
       state.actionSeq += 1;
       state.summary = summaryFor(state);
-      return { ok: true, sessionState: state, broadcast: stateBroadcasts(state) };
+      return { ok: true, sessionState: state, broadcast: withEvents(stateBroadcasts(state)) };
     }
 
     // Gameplay actions: only the acting human seat, only during a live hand.
@@ -1215,7 +1283,6 @@ globalThis.game = {
         return fail('amount must be a non-negative safe integer');
       }
 
-      const ev = [];
       const applied = applyPlayerAction(state, seatIndex, data.type, data.amount);
       if (applied.error) return fail(applied.error);
       ev.push({
@@ -1236,9 +1303,7 @@ globalThis.game = {
       }
 
       state.summary = summaryFor(state);
-      const broadcast = stateBroadcasts(state);
-      for (const e of ev) broadcast.unshift({ to: 'all', data: e });
-      return { ok: true, sessionState: state, broadcast };
+      return { ok: true, sessionState: state, broadcast: withEvents(stateBroadcasts(state)) };
     }
 
     return fail('Unknown command: ' + data.type);
@@ -1248,17 +1313,18 @@ globalThis.game = {
     const state = ctx.sessionState;
     if (!state) return { ok: true };
     syncPresence(state, ctx);
-    // Between hands (e.g. right after session creation failed to deal because
-    // only one seat had chips): try to start the next hand.
-    let broadcast;
+
+    const ev = [];
+    processExpiredDeadline(state, ctx, ev);
+
+    // Between hands: start the next one (a hand may have ended via timeout).
     if (!state.hand.live && !state.matchResult) {
-      const before = state.handNumber;
-      if (startHand(state, ctx) && state.handNumber !== before) {
-        broadcast = stateBroadcasts(state);
-        broadcast.unshift(handStartedBroadcast(state));
-      }
+      if (startHand(state, ctx)) ev.push(handStartedBroadcast(state).data);
     }
     state.summary = summaryFor(state);
+    if (ev.length === 0) return { ok: true, sessionState: state };
+    const broadcast = stateBroadcasts(state);
+    for (const e of ev) broadcast.unshift({ to: 'all', data: e });
     return { ok: true, sessionState: state, broadcast };
   },
 };

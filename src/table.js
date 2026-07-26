@@ -8,6 +8,7 @@ import { GameSocket } from './game-socket.js';
 import { TableRenderer } from './table3d.js';
 import { seatVisual, seatUnit, presetTotal } from './table-utils.js';
 import { ChatPanel } from './chat.js';
+import { VoiceController } from './voice.js';
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -62,7 +63,8 @@ export class TableScreen {
     this.attachChat(sessionId);
   }
 
-  // The session detail carries the chat conversation for this table.
+  // The session detail carries the chat conversation for this table (chat
+  // and voice both anchor to it).
   async attachChat(sessionId) {
     try {
       const session = await this.ctx.net.client.get(
@@ -71,7 +73,50 @@ export class TableScreen {
       if (this.chat) this.chat.destroy();
       this.chat = new ChatPanel(this.ctx.net, session.chatConversationId);
       if (this.chatContainer) this.chat.mount(this.chatContainer);
-    } catch { /* chat is optional; gameplay continues without it */ }
+      this.attachVoice(session.chatConversationId);
+    } catch { /* chat/voice are optional; gameplay continues without them */ }
+  }
+
+  attachVoice(conversationId) {
+    if (this.voice) this.voice.destroy();
+    this.voice = new VoiceController(this.ctx.net, conversationId, {
+      onParticipants: () => this.renderVoicePanel(),
+      onState: () => this.renderVoicePanel(),
+      onError: (m) => this.showError(m),
+    });
+    this.renderVoicePanel();
+  }
+
+  hasOtherHumans() {
+    const seats = this.gameState?.publicState?.seats || [];
+    return seats.some((s) => s.userId && s.userId !== this.ctx.net.userId && !s.left);
+  }
+
+  renderVoicePanel() {
+    if (!this.voicePanel || !this.voice) return;
+    const enabled = this.voice.enabled;
+    this.voiceBtn.textContent = enabled ? 'Voice: on' : 'Voice: off';
+    this.muteBtn.hidden = !enabled;
+    this.voiceBtn.disabled = !enabled && !this.hasOtherHumans();
+    this.voiceBtn.title = this.hasOtherHumans()
+      ? 'Join table voice chat (microphone)'
+      : 'Voice is available when another human is at the table';
+    this.voiceList.textContent = '';
+    if (enabled) {
+      for (const p of this.voice.participants) {
+        const [userId, state] = p;
+        this.voiceList.append(el('span', {
+          class: `voice-peer${state.speaking ? ' speaking' : ''}`,
+          text: `${state.muted ? '🔇' : '🎙'} ${this.nameFor(userId)}`,
+        }));
+      }
+    }
+  }
+
+  nameFor(userId) {
+    const seats = this.gameState?.publicState?.seats || [];
+    const s = seats.find((x) => x.userId === userId);
+    return s ? s.name : `Player ${String(userId).slice(0, 8)}`;
   }
 
   // Estimate the server clock from turn deadlines so countdowns are smooth.
@@ -169,8 +214,31 @@ export class TableScreen {
 
     this.chatContainer = el('div', { class: 'chat-container' });
 
+    // Voice controls (default OFF; explicit microphone opt-in).
+    this.voiceBtn = el('button', {
+      type: 'button', text: 'Voice: off',
+      onclick: () => {
+        if (!this.voice) return;
+        if (this.voice.enabled) this.voice.disable();
+        else this.voice.enable();
+      },
+    });
+    this.muteBtn = el('button', {
+      type: 'button', text: 'Mute', hidden: '',
+      onclick: () => {
+        if (!this.voice) return;
+        this.voiceMuted = !this.voiceMuted;
+        this.muteBtn.textContent = this.voiceMuted ? 'Unmute' : 'Mute';
+        this.voice.setMuted(this.voiceMuted);
+      },
+    });
+    this.voiceList = el('span', { class: 'voice-list' });
+    this.voicePanel = el('div', { class: 'voice-panel' },
+      this.voiceBtn, this.muteBtn, this.voiceList);
+
     this.screen = el('div', { class: 'table-screen' },
-      this.statusLine, stage, actionBar, this.chatContainer, this.feed, this.errorLine, leaveBtn);
+      this.statusLine, stage, actionBar, this.voicePanel, this.chatContainer,
+      this.feed, this.errorLine, leaveBtn);
     root.append(this.screen);
 
     try {
@@ -294,6 +362,7 @@ export class TableScreen {
     if (this.renderer3d && pub) this.renderer3d.update(pub, you);
 
     this.renderActionBar();
+    this.renderVoicePanel();
     this.renderTimer();
   }
 
@@ -362,6 +431,7 @@ export class TableScreen {
   destroy() {
     this.destroyed = true;
     if (this.timerInterval) clearInterval(this.timerInterval);
+    if (this.voice) this.voice.destroy();
     if (this.chat) this.chat.destroy();
     if (this.renderer3d) this.renderer3d.dispose();
     if (this.game) this.game.destroy();

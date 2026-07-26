@@ -127,6 +127,13 @@ button.preset { padding: 0.2rem 0.5rem; font-size: 0.78rem; }
 .chat-input-row input { flex: 1; background: #16202f; color: var(--fg);
   border: 1px solid #2a3a52; border-radius: 6px; padding: 0.4rem; font: inherit; }
 
+/* Voice */
+.voice-panel { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.voice-list { display: flex; gap: 0.4rem; flex-wrap: wrap; font-size: 0.8rem; }
+.voice-peer { padding: 0.15rem 0.45rem; background: #16202f; border-radius: 10px;
+  border: 1px solid #2a3a52; }
+.voice-peer.speaking { border-color: #4caf7d; }
+
 @media (max-width: 480px) {
   .table-stage { aspect-ratio: 4 / 5; }
   .seat-panel { min-width: 3.6rem; font-size: 0.7rem; padding: 0.15rem 0.3rem; }

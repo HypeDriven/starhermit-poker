@@ -92,17 +92,17 @@ The repository is **empty** (git repo, no commits on disk, no files). There is n
 3. ✅ Auth/launch-token handling + boot flow (local-dev auth panel fallback).
 4. ✅ Realtime room creation + lobby UI.
 5. ✅ Friend invites + quick join.
-6. Minimal room-bound `server.js` (session create, sync, projections, summary).
-7. Gameplay WS + synchronization client.
-8. Deck/dealing + private-state projections (+ leak tests).
-9. Betting engine.
-10. Side pots + showdown (evaluator).
-11. Turn timers.
-12. AI seats (conservative/balanced/aggressive).
-13. Full table UI (three.js + DOM controls).
-14. Chat. 15. Voice. 16. Profiles. 17. Stats + leaderboard. 18. Replays.
-19. Achievements (config + documented limitation only).
-20. Full test + security pass.
-21. Deployment docs (README).
+6. ✅ Minimal room-bound `server.js`.
+7. ✅ Gameplay WS + synchronization client.
+8. ✅ Deck/dealing + private-state projections (+ leak tests).
+9. ✅ Betting engine.
+10. ✅ Side pots + showdown (evaluator).
+11. ✅ Turn timers.
+12. ✅ AI seats (conservative/balanced/aggressive).
+13. ✅ Full table UI (three.js + DOM controls).
+14. ✅ Chat. 15. ✅ Voice. 16. ✅ Profiles. 17. ✅ Stats + leaderboard. 18. ✅ Replays.
+19. ✅ Achievements (config + documented limitation only).
+20. ✅ Full test + security pass.
+21. ✅ Deployment docs (README).
 
 After each checkpoint: `node --check` on all JS, run `node --test`, report files changed / commands run / failures, and a manual verification procedure against `http://localhost:5000`.

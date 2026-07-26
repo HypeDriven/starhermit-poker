@@ -7,6 +7,7 @@ import { RoomController } from './realtime-room.js';
 import { GameSocket } from './game-socket.js';
 import { TableRenderer } from './table3d.js';
 import { seatVisual, seatUnit, presetTotal } from './table-utils.js';
+import { ChatPanel } from './chat.js';
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -58,6 +59,19 @@ export class TableScreen {
       onDown: () => this.render(),
     });
     this.game.connect();
+    this.attachChat(sessionId);
+  }
+
+  // The session detail carries the chat conversation for this table.
+  async attachChat(sessionId) {
+    try {
+      const session = await this.ctx.net.client.get(
+        `/api/v1/games/${this.ctx.net.scope}/sessions/${sessionId}`);
+      if (this.destroyed || !session || !session.chatConversationId) return;
+      if (this.chat) this.chat.destroy();
+      this.chat = new ChatPanel(this.ctx.net, session.chatConversationId);
+      if (this.chatContainer) this.chat.mount(this.chatContainer);
+    } catch { /* chat is optional; gameplay continues without it */ }
   }
 
   // Estimate the server clock from turn deadlines so countdowns are smooth.
@@ -153,8 +167,10 @@ export class TableScreen {
 
     const leaveBtn = el('button', { type: 'button', text: 'Leave table', onclick: () => this.leave() });
 
+    this.chatContainer = el('div', { class: 'chat-container' });
+
     this.screen = el('div', { class: 'table-screen' },
-      this.statusLine, stage, actionBar, this.feed, this.errorLine, leaveBtn);
+      this.statusLine, stage, actionBar, this.chatContainer, this.feed, this.errorLine, leaveBtn);
     root.append(this.screen);
 
     try {
@@ -346,6 +362,7 @@ export class TableScreen {
   destroy() {
     this.destroyed = true;
     if (this.timerInterval) clearInterval(this.timerInterval);
+    if (this.chat) this.chat.destroy();
     if (this.renderer3d) this.renderer3d.dispose();
     if (this.game) this.game.destroy();
     this.roomCtl.destroy();

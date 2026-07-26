@@ -1161,6 +1161,162 @@ function processExpiredDeadline(state, ctx, ev) {
 }
 
 // ---------------------------------------------------------------------------
+// AI players
+//
+// Entirely script-owned: decisions run inside onTick/onPlayerMessage via
+// runAiLoop — there is no external bot service. The AI sees only its own hole
+// cards and public state (by construction; it never reads other seats' holes
+// or the deck). Decisions are bounded heuristics — no simulations — and use
+// only ctx.random-derived randomness for behavioral variation.
+// ---------------------------------------------------------------------------
+
+const AI_PROFILES = {
+  // tightness: subtracted from hand strength. raiseThreshold/betThreshold:
+  // effective strength needed to get aggressive. bluff: rng chance of a
+  // bluff bet/raise. betFraction: default sizing as a fraction of the pot.
+  conservative: { tightness: 0.15, raiseThreshold: 0.55, betThreshold: 0.55, bluff: 0.03, betFraction: 0.5 },
+  balanced: { tightness: 0.08, raiseThreshold: 0.45, betThreshold: 0.45, bluff: 0.07, betFraction: 0.6 },
+  aggressive: { tightness: 0.0, raiseThreshold: 0.35, betThreshold: 0.3, bluff: 0.15, betFraction: 0.75 },
+};
+const AI_PROFILE_NAMES = Object.keys(AI_PROFILES);
+
+function assignAiProfiles(state, ctx) {
+  const rules = globalThis.pokerRules;
+  state.seats.forEach((s, i) => {
+    if (s.ai && !s.aiProfile) {
+      const rng = rules.mulberry32(rules.deriveSeed(ctx.random, 1000 + i));
+      s.aiProfile = AI_PROFILE_NAMES[Math.floor(rng() * AI_PROFILE_NAMES.length)];
+    }
+  });
+}
+
+// Hand strength estimate in [0,1). Preflop uses a Chen-formula-like score;
+// postflop uses the made-hand category plus simple flush/straight draws.
+function aiStrength(state, seatIndex) {
+  const rules = globalThis.pokerRules;
+  const hand = state.hand;
+  const hole = hand.holes[seatIndex];
+  if (!hole) return 0;
+
+  if (hand.street === 'preflop') {
+    const r1 = Math.max(hole[0] % 13, hole[1] % 13);
+    const r2 = Math.min(hole[0] % 13, hole[1] % 13);
+    const suited = ((hole[0] / 13) | 0) === ((hole[1] / 13) | 0);
+    let score;
+    if (r1 === r2) score = Math.max(5, (r1 + 2) * 1.2); // pairs
+    else {
+      score = [2, 2, 2, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 8, 10][r1]; // high card value
+      const gap = r1 - r2 - 1;
+      score -= [0, 1, 2, 4, 5][Math.min(gap, 4)];
+      if (gap <= 1 && r1 < 11) score += 1; // straight potential
+      if (suited) score += 2;
+    }
+    return Math.max(0, Math.min(0.95, score / 16));
+  }
+
+  // Postflop: made hand + draws.
+  const made = rules.evaluateHoldem(hole, hand.board);
+  let strength = [0.05, 0.35, 0.52, 0.62, 0.72, 0.78, 0.85, 0.93, 0.99][made.category];
+  // Top-pair-or-better kickers nudge pairs/trips.
+  if (made.category >= 1 && made.category <= 3 && made.score[1] >= 10) strength += 0.04;
+  // Flush draw: 4+ cards of one suit among hole + board.
+  const suits = [0, 0, 0, 0];
+  for (const c of hole.concat(hand.board)) suits[(c / 13) | 0] += 1;
+  if (made.category < 5 && suits.some((n) => n === 4)) strength += 0.08;
+  // Open straight draw: any 4-run not already a straight.
+  if (made.category < 4) {
+    const present = new Array(13).fill(false);
+    for (const c of hole.concat(hand.board)) present[c % 13] = true;
+    for (let lo = 0; lo <= 9; lo++) {
+      if (present[lo] && present[lo + 1] && present[lo + 2] && present[lo + 3]) {
+        strength += 0.08;
+        break;
+      }
+    }
+  }
+  return Math.min(0.99, strength);
+}
+
+// Choose one action for an AI seat. Uses legalActions so every decision is
+// inside the same rules enforced for humans.
+function aiDecide(state, seatIndex, rng) {
+  const la = legalActions(state, seatIndex);
+  const s = state.seats[seatIndex];
+  const profile = AI_PROFILES[s.aiProfile] || AI_PROFILES.balanced;
+  const pot = state.seats.reduce((t, x) => t + x.handCommit, 0);
+  const toCall = la.callAmount;
+  const potOdds = toCall > 0 ? toCall / (pot + toCall) : 0;
+  const opponents = contestingSeats(state).length - 1;
+  const eff = aiStrength(state, seatIndex) - profile.tightness - opponents * 0.02;
+  const bluff = rng() < profile.bluff;
+
+  const sizeTo = (fraction) => {
+    // Bet/raise sizing as a NEW ROUND TOTAL (the table-wide convention).
+    const target = Math.round(state.hand.currentBet + Math.max(
+      state.hand.lastFullRaise, pot * fraction));
+    return Math.max(la.minimumAmount, Math.min(target, la.maximumAmount));
+  };
+
+  if (toCall > 0) {
+    if ((eff > profile.raiseThreshold && la.canRaise) || (bluff && la.canRaise && rng() < 0.5)) {
+      if (eff > 0.9) return { type: 'all-in' };
+      return { type: 'raise', amount: sizeTo(profile.betFraction) };
+    }
+    if (eff > potOdds || (bluff && rng() < 0.5)) return { type: 'call' };
+    return la.canCheck ? { type: 'check' } : { type: 'fold' };
+  }
+  if ((eff > profile.betThreshold && (la.canBet || la.canRaise)) || bluff) {
+    if (eff > 0.92) return { type: 'all-in' };
+    return state.hand.currentBet === 0
+      ? { type: 'bet', amount: sizeTo(profile.betFraction) }
+      : { type: 'raise', amount: sizeTo(profile.betFraction) };
+  }
+  return la.canCheck ? { type: 'check' } : { type: 'fold' };
+}
+
+const MAX_AI_ACTIONS = 24; // per invocation; keeps the CPU budget safe
+
+// Drive AI seats until a human acts or the hand/match ends. Bounded.
+function runAiLoop(state, ctx, ev) {
+  const rules = globalThis.pokerRules;
+  let steps = 0;
+  while (state.hand.live && !state.matchResult && state.actingSeat >= 0 &&
+         state.seats[state.actingSeat].ai && steps < MAX_AI_ACTIONS) {
+    const seatIndex = state.actingSeat;
+    const rng = rules.mulberry32(rules.deriveSeed(ctx.random, state.actionSeq + 7));
+    const decision = aiDecide(state, seatIndex, rng);
+    const applied = applyPlayerAction(state, seatIndex, decision.type, decision.amount);
+    if (applied.error) {
+      // Defensive: an AI decision should always be legal; fall back to
+      // check/fold to keep the game moving rather than wedging the table.
+      const fallback = applyPlayerAction(state, seatIndex,
+        state.hand.currentBet - state.seats[seatIndex].roundCommit > 0 ? 'fold' : 'check');
+      if (fallback.error) break;
+      ev.push(aiActionEvent(state, seatIndex, fallback));
+    } else {
+      ev.push(aiActionEvent(state, seatIndex, applied));
+    }
+    advanceHand(state, ctx, ev);
+    steps += 1;
+    if (!state.hand.live && !state.matchResult) {
+      if (startHand(state, ctx)) ev.push(handStartedBroadcast(state).data);
+    }
+  }
+}
+
+function aiActionEvent(state, seatIndex, applied) {
+  return {
+    type: 'action',
+    stateVersion: state.actionSeq,
+    handNumber: state.handNumber,
+    seat: seatIndex,
+    action: applied.action,
+    amount: applied.amount,
+    pot: state.seats.reduce((t, s) => t + s.handCommit, 0),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Entry points
 // ---------------------------------------------------------------------------
 
@@ -1168,7 +1324,10 @@ globalThis.game = {
   createSession(ctx) {
     const state = initialState(ctx);
     syncPresence(state, ctx);
+    assignAiProfiles(state, ctx);
     startHand(state, ctx);
+    const ev = [];
+    runAiLoop(state, ctx, ev); // the first actor may be an AI seat
     state.summary = summaryFor(state);
 
     // Initialize per-player documents (stats owned by the script).
@@ -1182,7 +1341,13 @@ globalThis.game = {
     }
 
     const broadcast = stateBroadcasts(state);
-    if (state.hand.live) broadcast.unshift(handStartedBroadcast(state));
+    if (state.hand.live || ev.length > 0) {
+      // hand-started may already sit in ev via the AI loop's chaining.
+      if (!ev.some((e) => e.type === 'hand-started') && state.hand.live) {
+        broadcast.unshift(handStartedBroadcast(state));
+      }
+    }
+    for (const e of ev) broadcast.unshift({ to: 'all', data: e });
 
     return {
       ok: true,
@@ -1209,6 +1374,9 @@ globalThis.game = {
     if (ev.length > 0 && !state.hand.live && !state.matchResult) {
       if (startHand(state, ctx)) ev.push(handStartedBroadcast(state).data);
     }
+    // AI seats act eagerly on any activity (no client round-trip needed).
+    assignAiProfiles(state, ctx);
+    runAiLoop(state, ctx, ev);
 
     const msg = ctx.message || {};
     const data = msg.data;
@@ -1316,6 +1484,10 @@ globalThis.game = {
 
     const ev = [];
     processExpiredDeadline(state, ctx, ev);
+
+    // AI seats act during the tick sweep.
+    assignAiProfiles(state, ctx);
+    runAiLoop(state, ctx, ev);
 
     // Between hands: start the next one (a hand may have ended via timeout).
     if (!state.hand.live && !state.matchResult) {

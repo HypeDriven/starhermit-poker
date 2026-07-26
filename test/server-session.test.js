@@ -121,7 +121,9 @@ test('no state broadcast ever targets "all" or contains deck/holes', () => {
 
 test('presence conversion: a leaver becomes an AI seat and keeps their stack', () => {
   const created = game.createSession(roomCtx());
+  const before = created.sessionState.seats[1].stack;
   created.sessionState.seats[1].stack = 4321;
+  const expectedTotal = 30000 - before + 4321;
   const ctx = roomCtx({
     sessionState: created.sessionState,
     presence: {
@@ -134,7 +136,11 @@ test('presence conversion: a leaver becomes an AI seat and keeps their stack', (
   const bob = ctx.sessionState.seats[1];
   assert.equal(bob.ai, true);
   assert.equal(bob.left, true);
-  assert.equal(bob.stack, 4321);
+  // The converted seat is AI-driven: it may have acted legally already, but
+  // its chips are conserved (never destroyed or created).
+  const total = ctx.sessionState.seats.reduce((t, s) => t + s.stack + s.handCommit, 0);
+  assert.equal(total, expectedTotal);
+  assert.ok(bob.stack + bob.handCommit <= 4321 + 100);
 });
 
 test('epochMsToIso formats without Date', () => {

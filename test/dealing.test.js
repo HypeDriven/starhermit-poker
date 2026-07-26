@@ -65,10 +65,12 @@ test('heads-up blinds: dealer is small blind and acts first preflop', () => {
 });
 
 test('six-max blinds and action order: SB/BB right of button, UTG first', () => {
-  // Force the button deterministically: try randoms until dealer lands on 0.
+  // All-human table (AI seats would act immediately in createSession).
+  const allHuman = sixMax.map((r, i) => r.userId
+    ? r : { userId: `u-ai${i}`, name: `h${i}`, team: 0, slot: i, ai: false });
   let res;
   for (const r of [0.01, 0.2, 0.4, 0.6, 0.8, 0.99]) {
-    res = game.createSession(roomCtx(sixMax, { random: r }));
+    res = game.createSession(roomCtx(allHuman, { random: r }));
     if (res.sessionState.dealerSeat === 0) break;
   }
   const s = res.sessionState;

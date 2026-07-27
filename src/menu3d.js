@@ -16,6 +16,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import {
   SHELL, makeDriftState, stepDrift, mulberry32, easeInOutCubic, clamp01,
@@ -129,7 +130,14 @@ const CARD_FRAG = /* glsl */`
     vec3 col = mix(back, tex.rgb, face);
     float alpha = mix(1.0, tex.a, face);
 
-    float fres = pow(1.0 - abs(ndv), 2.0);
+    // Squared by hand rather than pow(x, 2.0). |ndv| is a dot product of two
+    // normalized vectors, so it rounds just above 1.0 often enough, and pow()
+    // with a negative base is undefined in GLSL — drivers that lower it to
+    // exp2(y * log2(x)) hand back NaN. That NaN does not stay local: it lands
+    // in the HDR buffer, and the bloom pass's separable blur smears it along
+    // a row and then a column, painting an axis-aligned black rectangle.
+    float f = max(0.0, 1.0 - abs(ndv));
+    float fres = f * f;
     float scan = sin(vWorld.y * 36.0 - uTime * 2.5 + uSeed * 17.0) * 0.5 + 0.5;
     float flick = 0.92 + 0.08 * sin(uTime * 13.0 + uSeed * 40.0);
     col = col * flick + uTint * (fres * 1.5 + scan * 0.05);
@@ -170,6 +178,30 @@ const HOLO_FRAG = /* glsl */`
   }
 `;
 
+// Scrubs non-finite pixels out of the HDR buffer before the bloom pass runs.
+// A NaN does not stay where it is produced: UnrealBloomPass blurs separably,
+// along a row and then a column, so a single bad fragment spreads into an
+// axis-aligned black rectangle — injecting one NaN card here blacked out the
+// entire frame, and on a tile-based mobile GPU it blacks out whole tiles.
+// The shaders below are clean, but this makes the artifact unreachable no
+// matter which driver mis-evaluates what.
+const SANITIZE_SHADER = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: BEAM_VERT, // plain uv passthrough, same as ShaderPass's own
+  fragmentShader: /* glsl */`
+    varying vec2 vUv;
+    uniform sampler2D tDiffuse;
+    // NaN is the only float that fails self-comparison. Inf passes that, so
+    // ceil it at the half-float limit too. Ternaries rather than min/clamp,
+    // whose behaviour on NaN operands is implementation-defined.
+    float sane(float x) { return x == x ? (x > 6.0e4 ? 6.0e4 : x) : 0.0; }
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      gl_FragColor = vec4(sane(c.r), sane(c.g), sane(c.b), sane(c.a));
+    }
+  `,
+};
+
 const DUST_VERT = /* glsl */`
   attribute float aSeed;
   varying float vSeed;
@@ -181,7 +213,13 @@ const DUST_VERT = /* glsl */`
     p.x += sin(uTime * 0.13 + aSeed * 31.0) * 0.6;
     p.z += cos(uTime * 0.17 + aSeed * 27.0) * 0.6;
     vec4 mv = modelViewMatrix * vec4(p, 1.0);
-    gl_PointSize = (60.0 * (0.4 + 0.6 * fract(aSeed * 7.0))) / -mv.z;
+    // Guarded divide and a capped sprite. The camera flies through this cloud
+    // and then orbits inside it, so particles pass arbitrarily close to the
+    // lens; at -mv.z near zero the size runs away to inf, and a point sprite
+    // sized inf gives the fragment stage a garbage gl_PointCoord — the other
+    // route by which NaN reaches the bloom chain and blooms into a black box.
+    float depth = max(-mv.z, 0.5);
+    gl_PointSize = clamp((60.0 * (0.4 + 0.6 * fract(aSeed * 7.0))) / depth, 1.0, 96.0);
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -306,6 +344,7 @@ export class MenuScene3D {
 
     this.composer = new EffectComposer(r);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.composer.addPass(new ShaderPass(SANITIZE_SHADER)); // before the blur
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.45, 0.4, 0.85);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());

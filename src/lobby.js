@@ -151,7 +151,10 @@ export class MenuScreen {
       if (this.destroyed) return;
       this.scene3d = new MenuScene3D(stage);
       if (this.scene3d.failed) this.scene3d = null;
-    }).catch(() => { /* no WebGL or CDN — the CSS background carries the menu */ });
+    }).catch((err) => {
+      // No WebGL or CDN — the CSS background carries the menu.
+      console.warn('menu3d: 3D menu unavailable', err);
+    });
 
     root.append(this.menu);
 

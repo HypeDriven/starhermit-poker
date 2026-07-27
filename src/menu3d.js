@@ -478,7 +478,11 @@ export class MenuScene3D {
   }
 
   loadCasino() {
-    new GLTFLoader().load('assets/casino.glb', (gltf) => {
+    // Resolve against this module, not the page URL: the app may be served
+    // from a path without a trailing slash, where a bare relative URL would
+    // escape the game directory.
+    const url = new URL('../assets/casino.glb', import.meta.url);
+    new GLTFLoader().load(url.href, (gltf) => {
       if (this.destroyed) return;
       const root = gltf.scene;
       const toRemove = [];
@@ -505,8 +509,9 @@ export class MenuScene3D {
       });
       toRemove.forEach((o) => o.parent && o.parent.remove(o));
       this.scene.add(root);
-    }, undefined, () => {
+    }, undefined, (err) => {
       // No GLB (e.g. opened from file://): keep sky/cards — still a menu.
+      console.warn('menu3d: casino.glb failed to load', err);
     });
   }
 
@@ -547,7 +552,22 @@ export class MenuScene3D {
     }
 
     this.updateCamera(dt);
-    this.composer.render();
+    try {
+      this.composer.render();
+    } catch (err) {
+      // Some GPUs can't handle the bloom chain's float buffers — degrade to
+      // a plain render; if even that fails, give the stage back to CSS.
+      if (!this.plainRender) {
+        this.plainRender = true;
+        console.warn('menu3d: bloom pipeline failed, falling back', err);
+      }
+      try {
+        this.renderer.render(this.scene, this.camera);
+      } catch (e) {
+        console.warn('menu3d: renderer failed', e);
+        this.destroy();
+      }
+    }
   }
 
   updateCamera(dt) {

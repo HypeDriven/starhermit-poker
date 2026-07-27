@@ -22,10 +22,6 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
-const RANKS = '23456789TJQKA';
-const SUITS = 'cdhs';
-const cardName = (c) => RANKS[c % 13] + SUITS[(c / 13) | 0];
-
 export class TableScreen {
   // ctx: { root, net, onExitToMenu() }; room: the Playing realtime room.
   constructor(ctx, room) {
@@ -34,8 +30,6 @@ export class TableScreen {
     this.gameState = null;      // last 'state' message { you, publicState }
     this.events = [];           // recent game events (feed)
     this.destroyed = false;
-    this.clockOffset = 0;       // serverNow ≈ Date.now() + clockOffset
-    this.lastDeadline = 0;
 
     this.roomCtl = new RoomController(ctx.net, {
       onRoster: (r) => {
@@ -63,7 +57,6 @@ export class TableScreen {
     this.game = new GameSocket(this.ctx.net, sessionId, {
       onState: (msg) => {
         this.gameState = msg;
-        this.trackClock(msg);
         this.render();
       },
       onEvent: (msg) => this.onGameEvent(msg),
@@ -136,16 +129,6 @@ export class TableScreen {
     return this.ctx.net.profiles.displayName(userId, s ? s.name : undefined);
   }
 
-  // Estimate the server clock from turn deadlines so countdowns are smooth.
-  trackClock(msg) {
-    const pub = msg.publicState || {};
-    if (pub.turnDeadlineMs && pub.turnDeadlineMs > this.lastDeadline) {
-      const turnStart = pub.turnDeadlineMs - (pub.turnSeconds || 30) * 1000;
-      this.clockOffset = turnStart - Date.now();
-      this.lastDeadline = pub.turnDeadlineMs;
-    }
-  }
-
   onGameEvent(msg) {
     if (msg.type === 'action') {
       this.pushEvent(this.describeAction(msg));
@@ -166,7 +149,7 @@ export class TableScreen {
       case 'check': case 'timeout-check': return `${name} checks${msg.action.startsWith('timeout') ? ' (time)' : ''}`;
       case 'call': return `${name} calls ${msg.amount}`;
       case 'bet': return `${name} bets ${msg.amount}`;
-      case 'raise': return `${name} raises ${msg.amount}`;
+      case 'raise': return `${name} raises to ${(msg.total ?? msg.amount).toLocaleString()}`;
       case 'all-in': return `${name} is all-in`;
       case 'blind': return `${name} posts ${msg.amount}`;
       default: return `${name}: ${msg.action} ${msg.amount || ''}`;
@@ -408,7 +391,7 @@ export class TableScreen {
     const canAggro = pub.currentBet === 0 ? la.canBet : la.canRaise;
     this.betRaiseBtn.textContent = pub.currentBet === 0 ? 'Bet' : 'Raise to';
     this.betRaiseBtn.disabled = !canAggro;
-    this.allInBtn.disabled = la.maximumAmount <= 0;
+    this.allInBtn.disabled = la.canAllIn === false || la.maximumAmount <= 0;
 
     this.amountInput.min = la.minimumAmount;
     this.amountInput.max = la.maximumAmount;
@@ -423,7 +406,10 @@ export class TableScreen {
     if (this.destroyed) return;
     const pub = this.gameState?.publicState;
     if (!pub || !pub.turnDeadlineMs || pub.actingSeat < 0) return;
-    const remaining = Math.max(0, pub.turnDeadlineMs - (Date.now() + this.clockOffset));
+    // turnDeadlineMs is an absolute epoch from the authoritative server.
+    // Do not reset the clock from receipt time: delayed frames must show the
+    // actual remaining time rather than granting a visual extra turn.
+    const remaining = Math.max(0, pub.turnDeadlineMs - Date.now());
     const seconds = Math.ceil(remaining / 1000);
     const panels = this.seatOverlay?.querySelectorAll('.seat-panel.acting .seat-timer');
     if (panels) {

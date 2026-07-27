@@ -11,16 +11,16 @@ const j = (x) => JSON.parse(JSON.stringify(x));
 // use prevHand (the finished hand) and account for hand-2 blinds on stacks.
 // ---------------------------------------------------------------------------
 
-function newTable({ stacks = null, random = 0.42, now = 1_000_000 } = {}) {
-  const roster = [
-    { userId: 'u-a', name: 'alice', team: 0, slot: 0, ai: false },
-    { userId: 'u-b', name: 'bob', team: 0, slot: 1, ai: false },
-  ];
+function newTable({ stacks = null, random = 0.42, now = 1_000_000, seatCount = 2 } = {}) {
+  const names = ['alice', 'bob', 'carol'];
+  const roster = Array.from({ length: seatCount }, (_, i) => ({
+    userId: `u-${String.fromCharCode(97 + i)}`, name: names[i], team: 0, slot: i, ai: false,
+  }));
   const ctx = makeCtx({
     now, random,
     room: { roomId: 'r', metadata: { startingStack: 10000, smallBlind: 50, bigBlind: 100, turnDurationSeconds: 30 }, roster },
-    presence: { 'u-a': { online: true, left: false }, 'u-b': { online: true, left: false } },
-    players: [{ id: 'u-a', name: 'alice' }, { id: 'u-b', name: 'bob' }],
+    presence: Object.fromEntries(roster.map((r) => [r.userId, { online: true, left: false }])),
+    players: roster.map((r) => ({ id: r.userId, name: r.name })),
   });
   const state = game.createSession(ctx).sessionState;
   if (stacks) state.seats.forEach((s, i) => { s.stack = stacks[i]; });
@@ -70,6 +70,29 @@ test('heads-up preflop: SB (dealer) acts first; BB closes with a check', () => {
   assert.equal(state.hand.street, 'flop');
   assert.equal(state.hand.board.length, 3);
   assert.equal(state.actingSeat, 1 - dealer); // non-dealer first postflop
+});
+
+test('a short big blind never lowers the price below the posted small blind', () => {
+  const { state, ctx } = newTable();
+  const nextBigBlind = state.dealerSeat; // button rotates; old button becomes BB heads-up
+  for (const seat of state.seats) {
+    seat.handCommit = 0;
+    seat.roundCommit = 0;
+    seat.folded = false;
+    seat.allIn = false;
+    seat.eliminated = false;
+  }
+  state.seats[nextBigBlind].stack = 30;
+  state.seats[1 - nextBigBlind].stack = 1000;
+  state.hand.live = false;
+  state.actingSeat = -1;
+  game.onTick({ ...ctx, sessionState: state });
+
+  assert.equal(state.hand.bigBlindSeat, nextBigBlind);
+  assert.equal(state.seats[nextBigBlind].roundCommit, 30);
+  assert.equal(state.seats[state.hand.smallBlindSeat].roundCommit, 50);
+  assert.equal(state.hand.currentBet, 50);
+  assert.equal(state.hand.minRaiseTotal, 150);
 });
 
 test('checks around advance streets to showdown; chips conserved; hand chains', () => {
@@ -168,6 +191,57 @@ test('short all-in does not reopen the action and closes the round', () => {
   assert.equal(state.hand.street, 'flop');
   checkCallDown(state, ctx);
   assert.equal(totalChips(state), 10250); // 20000 less bb's overridden stack
+});
+
+test('a short all-in does not allow a player to bypass closed action by shoving', () => {
+  const { state, ctx } = newTable({ seatCount: 3 });
+  while (state.hand.street === 'preflop') {
+    const seat = state.seats[state.actingSeat];
+    const toCall = state.hand.currentBet - seat.roundCommit;
+    const res = act(state, ctx, seat.userId, { type: toCall ? 'call' : 'check' });
+    assert.equal(res.ok, true);
+  }
+
+  const first = state.actingSeat;
+  let res = act(state, ctx, actingUser(state), { type: 'bet', amount: 200 });
+  assert.equal(res.ok, true);
+  res = act(state, ctx, actingUser(state), { type: 'call' });
+  assert.equal(res.ok, true);
+  state.seats[state.actingSeat].stack = 250;
+  res = act(state, ctx, actingUser(state), { type: 'all-in' });
+  assert.equal(res.ok, true);
+  assert.equal(state.hand.currentBet, 250);
+  assert.equal(state.actingSeat, first);
+  assert.equal(state.seats[first].lastActionSeq >= 0, true);
+  assert.equal(res.sessionState.hand.lastFullRaise, 200);
+
+  const legal = res.broadcast.find((b) => Array.isArray(b.to) && b.to[0] === state.seats[first].userId)
+    .data.you.legalActions;
+  assert.equal(legal.canRaise, false);
+  assert.equal(legal.canAllIn, false);
+  res = act(state, ctx, state.seats[first].userId, { type: 'all-in' });
+  assert.equal(res.ok, false);
+  assert.match(res.error, /action is closed/i);
+  assert.equal(act(state, ctx, state.seats[first].userId, { type: 'call' }).ok, true);
+});
+
+test('short opening all-in does not reduce the minimum raise', () => {
+  const { state, ctx } = newTable();
+  act(state, ctx, actingUser(state), { type: 'call' });
+  act(state, ctx, actingUser(state), { type: 'check' });
+  const opener = state.actingSeat;
+  state.seats[opener].stack = 60;
+
+  let res = act(state, ctx, actingUser(state), { type: 'all-in' });
+  assert.equal(res.ok, true);
+  assert.equal(state.hand.currentBet, 60);
+  assert.equal(state.hand.lastFullRaise, 100);
+
+  res = act(state, ctx, actingUser(state), { type: 'raise', amount: 120 });
+  assert.equal(res.ok, false);
+  assert.match(res.error, /minimum raise/i);
+  res = act(state, ctx, actingUser(state), { type: 'raise', amount: 160 });
+  assert.equal(res.ok, true);
 });
 
 test('full all-in: uncalled portion returns when the other player folds', () => {

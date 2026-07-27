@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { seatVisual, seatUnit, presetTotal } from '../src/table-utils.js';
+import {
+  seatVisual, seatUnit, presetTotal, visibleCardsForSeat,
+} from '../src/table-utils.js';
 
 test('seatVisual puts the player at position 0 and rotates others', () => {
   assert.equal(seatVisual(2, 2), 0);       // own seat bottom center
@@ -16,6 +18,20 @@ test('seatUnit is on the unit circle and own seat is bottom center', () => {
   }
   const own = seatUnit(0);
   assert.ok(Math.abs(own.x) < 1e-9 && own.y > 0.99, 'own seat not at bottom');
+});
+
+test('visibleCardsForSeat never exposes an opponent reveal during a live hand', () => {
+  const opponent = { seat: 2, inHand: true };
+  const you = { seat: 0, holeCards: [12, 25] };
+  assert.deepEqual(visibleCardsForSeat(opponent, you, { 2: [50, 51] }), [-1, -1]);
+  assert.deepEqual(visibleCardsForSeat({ seat: 0, inHand: true }, you, {}), [12, 25]);
+});
+
+test('visibleCardsForSeat allows only post-hand public reveals', () => {
+  assert.deepEqual(
+    visibleCardsForSeat({ seat: 2, inHand: false }, { seat: 0 }, { 2: [50, 51] }),
+    [50, 51]);
+  assert.equal(visibleCardsForSeat({ seat: 2, inHand: false }, { seat: 0 }, {}), null);
 });
 
 test('presetTotal honors the new-total convention and clamps', () => {

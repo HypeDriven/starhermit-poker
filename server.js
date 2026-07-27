@@ -33,8 +33,9 @@
 //        Per-player addressed (to:[userId]) full projection. privateState is
 //        null for spectators of hidden info; publicState never contains hole
 //        cards of active unrevealed players, the deck, or burn cards.
-//   { type:"action", stateVersion, handNumber, seat, action, amount, pot }
-//        To "all". Compact transition notice for UI/replay flavor.
+//   { type:"action", stateVersion, handNumber, seat, action, amount, total, pot }
+//        To "all". `amount` is chips posted by this action; `total` is the
+//        player's new round contribution (used to describe raises correctly).
 //   { type:"hand-started", stateVersion, handNumber, dealerSeat,
 //        smallBlindSeat, bigBlindSeat }                     -> "all"
 //   { type:"hand-complete", stateVersion, handNumber, winners, pots,
@@ -705,10 +706,13 @@ function startHand(state, ctx) {
   state.actionSeq += 1;
   logAction(state, bbSeat, 'blind', bbPosted);
 
-  hand.currentBet = bbPosted;
+  // A short-stacked big blind can post less than the small blind. The price
+  // to call is always the largest forced contribution, while the minimum
+  // full raise increment remains the configured big blind.
+  hand.currentBet = Math.max(bbPosted, sbPosted);
   hand.lastFullRaise = state.config.bigBlind;
   hand.lastFullRaiseSeq = state.actionSeq;
-  hand.minRaiseTotal = bbPosted + hand.lastFullRaise;
+  hand.minRaiseTotal = hand.currentBet + hand.lastFullRaise;
 
   // First action preflop: heads-up the dealer (small blind); otherwise the
   // seat left of the big blind.
@@ -780,6 +784,8 @@ function legalActions(state, seatIndex) {
     callAmount: Math.max(0, Math.min(toCall, s.stack)),
     canBet,
     canRaise,
+    // A shove is legal if it is only a call, or if aggressive action is open.
+    canAllIn: maxTotal > 0 && (maxTotal <= hand.currentBet || canBet || canRaise),
     minimumAmount: canBet
       ? Math.min(state.config.bigBlind, maxTotal)
       : (canRaise ? Math.min(hand.currentBet + hand.lastFullRaise, maxTotal) : maxTotal),
@@ -831,8 +837,12 @@ function applyPlayerAction(state, seatIndex, type, amount) {
   } else if (type === 'all-in') {
     newTotal = maxTotal;
     if (hand.currentBet === 0) action = 'bet';
-    else if (newTotal > hand.currentBet) action = 'raise';
-    else action = 'call';
+    else if (newTotal > hand.currentBet) {
+      if (!raiseReopened(state, seatIndex)) {
+        return { error: 'Action is closed — a full raise has not occurred since your last action' };
+      }
+      action = 'raise';
+    } else action = 'call';
   } else {
     return 'Unknown action: ' + type;
   }
@@ -844,8 +854,10 @@ function applyPlayerAction(state, seatIndex, type, amount) {
     const posted = postChips(state, seatIndex, newTotal - s.roundCommit);
     if (newTotal > hand.currentBet) {
       const raiseSize = newTotal - hand.currentBet;
+      // A short all-in may increase the price to call, but it is not a full
+      // opening bet/raise and must not lower the minimum raise increment.
       const isFullRaise = hand.currentBet === 0
-        ? newTotal >= state.config.bigBlind || s.allIn
+        ? newTotal >= state.config.bigBlind
         : raiseSize >= hand.lastFullRaise;
       if (isFullRaise) {
         hand.lastFullRaise = hand.currentBet === 0 ? newTotal : raiseSize;
@@ -855,7 +867,7 @@ function applyPlayerAction(state, seatIndex, type, amount) {
     }
     hand.minRaiseTotal = hand.currentBet + hand.lastFullRaise;
     logAction(state, seatIndex, action === type ? type : action, posted);
-    return { action, amount: posted, error: null };
+    return { action, amount: posted, total: newTotal, error: null };
   }
   logAction(state, seatIndex, type, 0);
   return { action: type, amount: 0, error: null };
@@ -1469,6 +1481,7 @@ function aiActionEvent(state, seatIndex, applied) {
     seat: seatIndex,
     action: applied.action,
     amount: applied.amount,
+    total: applied.total,
     pot: state.seats.reduce((t, s) => t + s.handCommit, 0),
   };
 }
@@ -1645,6 +1658,7 @@ globalThis.game = {
         seat: seatIndex,
         action: applied.action,
         amount: applied.amount,
+        total: applied.total,
         pot: state.seats.reduce((t, s) => t + s.handCommit, 0),
       });
       advanceHand(state, ctx, ev);

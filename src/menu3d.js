@@ -253,7 +253,9 @@ export class MenuScene3D {
     container.appendChild(r.domElement);
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 400);
+    // Tight near/far keeps depth precision high — mobile GPUs often have
+    // 16-bit depth buffers, and the inlay rings are nearly coplanar.
+    this.camera = new THREE.PerspectiveCamera(55, 1, 0.5, 240);
     this.camera.position.set(0, 5.5, 30);
 
     this.buildLighting();
@@ -271,7 +273,18 @@ export class MenuScene3D {
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
 
-    this.onResize = () => this.resize();
+    // Debounced: mobile URL-bar show/hide fires a stream of resizes, and
+    // small height-only changes aren't worth a re-layout flicker.
+    this.onResize = () => {
+      clearTimeout(this.resizeTimer);
+      this.resizeTimer = setTimeout(() => {
+        const w = this.container.clientWidth || innerWidth;
+        const h = this.container.clientHeight || innerHeight;
+        if (w === this.lastW && Math.abs(h - (this.lastH || 0)) < 60) return;
+        this.lastW = w; this.lastH = h;
+        this.resize();
+      }, 120);
+    };
     this.resizeObserver = new ResizeObserver(this.onResize);
     this.resizeObserver.observe(container);
     this.resize();
@@ -434,6 +447,7 @@ export class MenuScene3D {
         fragmentShader: CARD_FRAG,
         uniforms: u,
         transparent: true,
+        depthWrite: false, // avoid sorting flicker between tumbling cards
         side: THREE.DoubleSide,
       }));
       const mesh = new THREE.Mesh(geo, mat);
@@ -491,6 +505,13 @@ export class MenuScene3D {
         if (!o.isMesh) return;
         const name = o.name || '';
         const m = o.material;
+        // Base surfaces that carry nearly-coplanar glow rings: push them
+        // back in the depth buffer so the rings win without z-fighting.
+        if (m && /^(FloorMain|Dais|Balcony|TableFelt|TableRail)$/.test(name)) {
+          m.polygonOffset = true;
+          m.polygonOffsetFactor = 1;
+          m.polygonOffsetUnits = 2;
+        }
         // Blender exports emission strengths of 8–14, which nukes the bloom
         // pass; pull them into a cinematic range and only pulse true neons.
         if (m && m.emissive && (m.emissive.r + m.emissive.g + m.emissive.b) > 0.01) {
@@ -604,6 +625,7 @@ export class MenuScene3D {
   destroy() {
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
+    clearTimeout(this.resizeTimer);
     if (this.resizeObserver) this.resizeObserver.disconnect();
     removeEventListener('pointermove', this.onPointer);
     removeEventListener('pointerdown', this.onSkip);

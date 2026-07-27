@@ -539,21 +539,35 @@ export class MenuScene3D {
       if (this.destroyed) return;
       const root = gltf.scene;
       const toRemove = [];
+      // GLTFLoader hands the *same* material instance to every mesh that uses
+      // it — 133 primitives share 11 materials here — so writing to a
+      // material inside a per-mesh traversal writes to it once per mesh.
+      // Both blocks below have to account for that.
+      const tuned = new Set();
       root.traverse((o) => {
         if (o.isLight) { toRemove.push(o); return; } // own lighting instead
         if (!o.isMesh) return;
         const name = o.name || '';
-        const m = o.material;
         // Base surfaces that carry nearly-coplanar glow rings: push them
         // back in the depth buffer so the rings win without z-fighting.
-        if (m && /^(FloorMain|Dais|Balcony|TableFelt|TableRail)$/.test(name)) {
-          m.polygonOffset = true;
-          m.polygonOffsetFactor = 1;
-          m.polygonOffsetUnits = 2;
+        // On a clone, because the offset is a property of *this* surface:
+        // Balcony and Dais share DarkMetal with 25 columns and TableRail
+        // shares RoyalGold with the chandelier stem and column bases, none
+        // of which should be pushed back.
+        if (o.material && /^(FloorMain|Dais|Balcony|TableFelt|TableRail)$/.test(name)) {
+          o.material = o.material.clone();
+          o.material.polygonOffset = true;
+          o.material.polygonOffsetFactor = 1;
+          o.material.polygonOffsetUnits = 2;
         }
+        const m = o.material;
         // Blender exports emission strengths of 8–14, which nukes the bloom
         // pass; pull them into a cinematic range and only pulse true neons.
-        if (m && m.emissive && (m.emissive.r + m.emissive.g + m.emissive.b) > 0.01) {
+        // Once per material: compounding this across every mesh that shared
+        // one drove the neons to ~1e-9, i.e. off.
+        if (m && m.emissive && !tuned.has(m)
+          && (m.emissive.r + m.emissive.g + m.emissive.b) > 0.01) {
+          tuned.add(m);
           m.emissiveIntensity *= 0.3;
           this.neonMats.push({
             mat: m, base: m.emissiveIntensity, phase: Math.random() * Math.PI * 2,

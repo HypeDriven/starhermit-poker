@@ -82,6 +82,7 @@ test('createRoom sends the documented FFA config and poker metadata', async () =
   assert.equal(body.teamCount, 1);
   assert.equal(body.seatsPerTeam, 6);
   assert.equal(typeof body.backfillAfterSeconds, 'number');
+  assert.equal(body.aiPlayers, 0); // defaults to no pre-seated AI
   assert.deepEqual(body.metadata, {
     variant: 'nlhe',
     startingStack: 10000,
@@ -90,6 +91,21 @@ test('createRoom sends the documented FFA config and poker metadata', async () =
     turnDurationSeconds: 30,
     visibility: 'public',
   });
+});
+
+test('createRoom forwards the requested AI opponent count', async () => {
+  const net = fakeNet();
+  const controller = new RoomController(net);
+  await controller.createRoom('private', 3);
+  assert.equal(net.posts[0].body.aiPlayers, 3);
+});
+
+test('setSeats posts the seat assignment to the seats endpoint', async () => {
+  const net = fakeNet();
+  const controller = new RoomController(net);
+  await controller.setSeats('r1', [{ participantId: 'p9', team: 0, slot: 4 }]);
+  assert.equal(net.posts[0].path, '/api/v1/realtime/rooms/r1/seats');
+  assert.deepEqual(net.posts[0].body, { seats: [{ participantId: 'p9', team: 0, slot: 4 }] });
 });
 
 test('quickJoin requests exactly one seat', async () => {

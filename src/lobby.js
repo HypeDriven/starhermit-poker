@@ -22,8 +22,10 @@ function el(tag, attrs = {}, ...children) {
 // Room acquisition helpers (used by the menu)
 
 // Quick Play: join the oldest open room with a free seat; when none exists
-// (404), create a public room and open it for matchmaking.
-export async function quickPlay(net) {
+// (404), create a public room with `aiPlayers` AI opponents seated and open
+// it for matchmaking. The open response is returned because an open room
+// starts immediately once every seat is taken — AI seats included.
+export async function quickPlay(net, aiPlayers = 0) {
   const controller = new RoomController(net);
   try {
     return await controller.quickJoin();
@@ -31,18 +33,18 @@ export async function quickPlay(net) {
     if (!(e instanceof ApiError) || e.status !== 404) {
       return recoverConflict(e, net);
     }
-    const room = await controller.createRoom('public');
-    await controller.openRoom(room.id);
-    return room;
+    const room = await controller.createRoom('public', aiPlayers);
+    return controller.openRoom(room.id);
   }
 }
 
 // Private Table: a lobby-state room the host fills with friend invites
-// (checkpoint 5) and starts manually.
-export async function createPrivateTable(net) {
+// (checkpoint 5) and starts manually. `aiPlayers` AI opponents are seated at
+// creation and can be rearranged in the lobby.
+export async function createPrivateTable(net, aiPlayers = 0) {
   const controller = new RoomController(net);
   try {
-    return await controller.createRoom('private');
+    return await controller.createRoom('private', aiPlayers);
   } catch (e) {
     return recoverConflict(e, net);
   }
@@ -95,6 +97,7 @@ export class MenuScreen {
     this.busy = false;
     this.inviteTimer = null;
     this.invites = [];
+    this.aiCount = 0;
   }
 
   show() {
@@ -123,6 +126,26 @@ export class MenuScreen {
 
     this.inviteSection = el('div', { class: 'invite-inbox', hidden: '' });
 
+    // AI opponents are seated the moment a room is created (platform
+    // `aiPlayers`); they only apply when we create the table — quick-joining
+    // someone else's room takes its roster as-is.
+    this.aiCountLabel = el('span', { class: 'ai-count', text: '0' });
+    const stepAi = (d) => {
+      this.aiCount = Math.min(GAME.maxSeats - 1, Math.max(0, this.aiCount + d));
+      this.aiCountLabel.textContent = String(this.aiCount);
+    };
+    const aiStepper = el('div', { class: 'ai-stepper' },
+      el('span', { class: 'muted small bold', text: 'AI opponents' }),
+      el('button', {
+        type: 'button', text: '−', 'aria-label': 'Fewer AI opponents',
+        onclick: () => stepAi(-1),
+      }),
+      this.aiCountLabel,
+      el('button', {
+        type: 'button', text: '+', 'aria-label': 'More AI opponents',
+        onclick: () => stepAi(1),
+      }));
+
     this.menu = el('div', { class: 'screen main-menu cinematic' },
       el('h1', { text: (gameInfo && gameInfo.name) || GAME.name }),
       el('p', {
@@ -132,13 +155,14 @@ export class MenuScreen {
           : 'No-limit Texas Hold\'em · play money only',
       }),
       el('div', { class: 'menu-actions' }, quickBtn, privateBtn, boardBtn, replaysBtn),
+      aiStepper,
       this.inviteSection,
       el('p', { class: 'muted small bold skip-hint', text: 'Click anywhere to skip the intro' }),
       el('p', {
         class: 'muted small bold',
-        text: 'Quick Play joins a public table; Private Table stays in the lobby ' +
-          'until you start it. Empty seats are filled by AI — the host can tap ' +
-          'an empty seat in the lobby to start right away.',
+        text: 'AI opponents sit down when the table is created (Quick Play only ' +
+          'when it opens a new table). In the lobby the host can tap an AI seat, ' +
+          'then an empty seat, to move it. Seats still empty at start are filled by AI.',
       }),
       this.errorLine,
     );
@@ -227,8 +251,8 @@ export class MenuScreen {
     this.errorLine.hidden = true;
     try {
       const room = mode === 'quick'
-        ? await quickPlay(this.ctx.net)
-        : await createPrivateTable(this.ctx.net);
+        ? await quickPlay(this.ctx.net, this.aiCount)
+        : await createPrivateTable(this.ctx.net, this.aiCount);
       if (room.status === 'Playing') this.ctx.onEnterTable(room);
       else this.ctx.onEnterLobby(room);
     } catch (e) {
@@ -265,6 +289,7 @@ export class LobbyScreen {
     this.room = room;
     this.selfReady = false;
     this.starting = false;
+    this.selectedAi = null; // participant id of an AI seat picked up for moving
     this.presence = new Map(); // userId -> online
     this.pendingInvites = new Set(); // userIds with an outstanding room invite
     this.destroyed = false;
@@ -430,6 +455,11 @@ export class LobbyScreen {
 
   onRoster(room) {
     this.room = room;
+    // Drop the move selection if that AI participant is gone or taken over.
+    if (this.selectedAi && !(room.participants || [])
+      .some((p) => p.id === this.selectedAi && p.isAi && !p.leftAt)) {
+      this.selectedAi = null;
+    }
     this.render();
     if (room.status === 'Playing' && room.gameSessionId && !this.destroyed) {
       this.ctx.onEnterTable(room);
@@ -450,7 +480,7 @@ export class LobbyScreen {
   }
 
   async start() {
-    if (this.starting) return; // seat taps bypass startBtn.disabled
+    if (this.starting) return; // ignore double-clicks while the request is out
     this.starting = true;
     this.startBtn.disabled = true;
     try {
@@ -472,6 +502,20 @@ export class LobbyScreen {
     } catch (e) {
       this.showError(e);
     }
+  }
+
+  // Host seat arrangement: move the selected AI participant to an empty seat.
+  async moveSelectedAi(seat) {
+    const participantId = this.selectedAi;
+    this.selectedAi = null;
+    try {
+      this.room = await this.controller.setSeats(this.room.id, [
+        { participantId, team: 0, slot: seat },
+      ]);
+    } catch (e) {
+      this.showError(e);
+    }
+    this.render();
   }
 
   async leave() {
@@ -525,24 +569,24 @@ export class LobbyScreen {
   }
 
   renderSeat(seat, participant, room) {
+    // The host arranges AI players while the room is in Lobby/Open: tap an AI
+    // seat to pick it up, then tap an empty seat to place it there. Empty
+    // seats that remain at start are still backfilled with AI by the platform.
+    const canArrange = isHost(room, this.ctx.net.userId) &&
+      (room.status === 'Lobby' || room.status === 'Open');
     if (!participant) {
-      // Hosts add AI on demand: tapping an empty seat starts the table
-      // immediately. The platform backfills EVERY empty seat at start —
-      // there is no add-one-AI endpoint — so one tap deals the first hand.
-      if (isHost(room, this.ctx.net.userId) &&
-          (room.status === 'Lobby' || room.status === 'Open')) {
+      if (canArrange && this.selectedAi) {
         return el('button', {
-          class: 'seat empty add-ai', type: 'button',
-          title: 'Fill empty seats with AI and deal the first hand',
-          onclick: () => this.start(),
+          class: 'seat empty drop-target', type: 'button',
+          title: 'Place the selected AI here',
+          onclick: () => this.moveSelectedAi(seat),
         },
           el('span', { class: 'seat-name', text: `Seat ${seat + 1}` }),
-          el('span', { class: 'add-ai-cta', text: '+ Add AI' }),
-          el('span', { class: 'muted small', text: 'starts the table now' }));
+          el('span', { class: 'muted small', text: 'Tap to place AI' }));
       }
       return el('div', {
         class: 'seat empty',
-        title: 'The host can fill empty seats with AI anytime',
+        title: 'Empty seats become AI when the table starts',
       },
         el('span', { class: 'seat-name', text: `Seat ${seat + 1}` }),
         el('span', { class: 'muted small', text: 'Empty — AI at start' }));
@@ -558,6 +602,23 @@ export class LobbyScreen {
       ? (participant.username || 'AI')
       : (this.ctx.net.profiles.profile(participant.userId),
         this.ctx.net.profiles.displayName(participant.userId, participant.username));
+    if (participant.isAi && canArrange) {
+      const selected = this.selectedAi === participant.id;
+      return el('button', {
+        class: `seat ai-movable${selected ? ' selected' : ''}`, type: 'button',
+        title: selected
+          ? 'Tap again to put it back'
+          : 'Select this AI, then tap an empty seat to move it',
+        onclick: () => {
+          this.selectedAi = selected ? null : participant.id;
+          this.render();
+        },
+      },
+        el('span', { class: 'seat-name', text: displayName }),
+        el('span', { class: 'seat-badges' },
+          el('span', { class: 'badge ai', text: 'AI' }),
+          selected ? el('span', { class: 'badge move', text: 'MOVE' }) : ''));
+    }
     return el('div', { class: `seat${isSelf ? ' self' : ''}${online ? '' : ' offline'}` },
       el('span', { class: 'seat-name', text: displayName }),
       el('span', { class: 'seat-badges' },

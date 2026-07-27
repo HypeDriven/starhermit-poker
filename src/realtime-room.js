@@ -76,12 +76,15 @@ export class RoomController {
 
   // --- REST ---
 
-  async createRoom(visibility) {
+  async createRoom(visibility, aiPlayers = 0) {
     const body = {
       gameSlug: this.net.scope, // ignored for scoped launch tokens (game_scope wins)
       teamCount: GAME.teamCount,
       seatsPerTeam: GAME.maxSeats,
       backfillAfterSeconds: GAME.roomBackfillAfterSeconds,
+      // AI opponents are seated immediately and hold real seats (matchmaking
+      // fills only what remains); the host can re-seat them via setSeats.
+      aiPlayers,
       metadata: buildRoomMetadata(visibility),
     };
     const room = await this.net.client.post(ROOMS, body);
@@ -109,6 +112,12 @@ export class RoomController {
 
   openRoom(roomId) {
     return this.net.client.post(`${ROOMS}/${roomId}/open`);
+  }
+
+  // Host-only seat assignment (Lobby/Open). Moves any participant — AI
+  // players included — to the given (team, slot); the slot must be free.
+  setSeats(roomId, seats) {
+    return this.net.client.post(`${ROOMS}/${roomId}/seats`, { seats });
   }
 
   startRoom(roomId) {

@@ -25,6 +25,10 @@ const FLY_SECONDS = 17;
 const CARD_COUNT = 28;
 const REDUCED = typeof matchMedia === 'function'
   && matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Touch-first devices: smaller depth buffers, tighter memory, and pointer
+// events that only exist while a finger is down.
+const MOBILE = typeof matchMedia === 'function'
+  && matchMedia('(pointer: coarse)').matches;
 
 // ---------------------------------------------------------------------------
 // Shaders
@@ -105,7 +109,13 @@ const CARD_FRAG = /* glsl */`
   void main() {
     vec3 col;
     float alpha;
-    if (gl_FrontFacing) {
+    // Facing is derived from the normal rather than gl_FrontFacing: several
+    // mobile drivers evaluate that builtin unreliably on double-sided
+    // geometry, which flips face/back per frame and flickers the cards.
+    vec3 nrm = normalize(vNormalW);
+    vec3 view = normalize(vViewW);
+    float ndv = dot(view, nrm);
+    if (ndv > 0.0) {
       vec4 tex = texture2D(uMap, vUv);
       col = tex.rgb;
       alpha = tex.a;
@@ -116,7 +126,7 @@ const CARD_FRAG = /* glsl */`
       col = vec3(0.015, 0.04, 0.09) + uTint * line * 0.55;
       alpha = 1.0;
     }
-    float fres = pow(1.0 - abs(dot(normalize(vViewW), normalize(vNormalW))), 2.0);
+    float fres = pow(1.0 - abs(ndv), 2.0);
     float scan = sin(vWorld.y * 36.0 - uTime * 2.5 + uSeed * 17.0) * 0.5 + 0.5;
     float flick = 0.92 + 0.08 * sin(uTime * 13.0 + uSeed * 40.0);
     col = col * flick + uTint * (fres * 1.5 + scan * 0.05);
@@ -241,13 +251,16 @@ export class MenuScene3D {
     this.idleAngle = Math.PI * 0.15;
 
     try {
-      this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      // Everything is composited through the bloom chain, so MSAA on the
+      // default framebuffer only buys a wasted full-screen buffer — memory
+      // mobile GPUs would rather spend on not dropping the context.
+      this.renderer = new THREE.WebGLRenderer({ antialias: !MOBILE, alpha: false });
     } catch {
       this.failed = true;
       return;
     }
     const r = this.renderer;
-    r.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    r.setPixelRatio(Math.min(devicePixelRatio || 1, MOBILE ? 1.5 : 2));
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 1.0;
     container.appendChild(r.domElement);
@@ -294,7 +307,9 @@ export class MenuScene3D {
       this.pointer.y = (e.clientY / innerHeight) * 2 - 1;
     };
     this.onSkip = () => { this.flyT = 1; };
-    addEventListener('pointermove', this.onPointer, { passive: true });
+    // Touch pointers only report while a finger is down, so the parallax
+    // would snap to wherever the tap landed; coarse pointers get none.
+    if (!MOBILE) addEventListener('pointermove', this.onPointer, { passive: true });
     if (!REDUCED) {
       addEventListener('pointerdown', this.onSkip);
       addEventListener('keydown', this.onSkip);
@@ -573,21 +588,28 @@ export class MenuScene3D {
     }
 
     this.updateCamera(dt);
-    try {
-      this.composer.render();
-    } catch (err) {
-      // Some GPUs can't handle the bloom chain's float buffers — degrade to
-      // a plain render; if even that fails, give the stage back to CSS.
-      if (!this.plainRender) {
+    this.render();
+  }
+
+  render() {
+    if (!this.plainRender) {
+      try {
+        this.composer.render();
+        return;
+      } catch (err) {
+        // Some GPUs can't handle the bloom chain's float buffers. Latch the
+        // fallback rather than retrying every frame: a composer that fails
+        // only intermittently alternates pipelines, which reads as flicker.
         this.plainRender = true;
         console.warn('menu3d: bloom pipeline failed, falling back', err);
       }
-      try {
-        this.renderer.render(this.scene, this.camera);
-      } catch (e) {
-        console.warn('menu3d: renderer failed', e);
-        this.destroy();
-      }
+    }
+    try {
+      this.renderer.render(this.scene, this.camera);
+    } catch (e) {
+      // If even a plain render fails, give the stage back to CSS.
+      console.warn('menu3d: renderer failed', e);
+      this.destroy();
     }
   }
 

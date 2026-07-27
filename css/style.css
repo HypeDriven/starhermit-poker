@@ -51,7 +51,12 @@ button.primary { background: linear-gradient(135deg, #79c9ff, #3b8fdf); border-c
 button.big { padding: 0.9rem 1.6rem; font-size: 1.1rem; }
 
 /* Cinematic main menu: 3D casino stage + glass overlay */
-.menu3d-stage { position: fixed; inset: 0; z-index: 0;
+.menu3d-stage { position: fixed; inset: 0; z-index: 0; overflow: hidden;
+  /* Pinned to the *largest* viewport height: on mobile the URL bar shows and
+     hides as you scroll, and a height that tracks it resizes the WebGL canvas
+     mid-animation, flickering the scene. Over-sizing hides under the bar
+     instead. Browsers without lvh fall back to the inset above. */
+  height: 100lvh;
   background: radial-gradient(ellipse at 50% 60%, #101c30 0, #05070d 70%); }
 .menu3d-stage canvas { width: 100%; height: 100%; display: block; }
 .main-menu.cinematic { position: relative; z-index: 1; max-width: none;

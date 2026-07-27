@@ -123,7 +123,7 @@ export class MenuScreen {
 
     this.inviteSection = el('div', { class: 'invite-inbox', hidden: '' });
 
-    this.menu = el('div', { class: 'screen main-menu' },
+    this.menu = el('div', { class: 'screen main-menu cinematic' },
       el('h1', { text: (gameInfo && gameInfo.name) || GAME.name }),
       el('p', {
         class: 'muted',
@@ -133,6 +133,7 @@ export class MenuScreen {
       }),
       el('div', { class: 'menu-actions' }, quickBtn, privateBtn, boardBtn, replaysBtn),
       this.inviteSection,
+      el('p', { class: 'muted small skip-hint', text: 'Click anywhere to skip the intro' }),
       el('p', {
         class: 'muted small',
         text: 'Quick Play joins a public table (empty seats are filled by AI). ' +
@@ -140,7 +141,25 @@ export class MenuScreen {
       }),
       this.errorLine,
     );
+    // Cinematic 3D casino behind the menu. Loaded dynamically so the node
+    // test-suite (and any WebGL-less browser) never has to resolve 'three'.
+    this.destroyed = false;
+    this.scene3d = null;
+    const stage = el('div', { class: 'menu3d-stage' });
+    root.append(stage);
+    import('./menu3d.js').then(({ MenuScene3D }) => {
+      if (this.destroyed) return;
+      this.scene3d = new MenuScene3D(stage);
+      if (this.scene3d.failed) this.scene3d = null;
+    }).catch(() => { /* no WebGL or CDN — the CSS background carries the menu */ });
+
     root.append(this.menu);
+
+    // The skip hint only makes sense while the camera is still flying.
+    const hint = this.menu.querySelector('.skip-hint');
+    this.dropHint = () => { if (hint) hint.hidden = true; };
+    addEventListener('pointerdown', this.dropHint, { once: true });
+    this.hintTimer = setTimeout(this.dropHint, 20000);
 
     // Room-invite inbox: polled (launch tokens cannot use the chat push socket).
     this.pollInvites();
@@ -218,6 +237,13 @@ export class MenuScreen {
 
   destroy() {
     this.busy = false;
+    this.destroyed = true;
+    removeEventListener('pointerdown', this.dropHint);
+    clearTimeout(this.hintTimer);
+    if (this.scene3d) {
+      this.scene3d.destroy();
+      this.scene3d = null;
+    }
     if (this.inviteTimer) {
       clearInterval(this.inviteTimer);
       this.inviteTimer = null;

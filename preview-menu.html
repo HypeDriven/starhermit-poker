@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StarHermit Poker — menu preview</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- Dev preview of the cinematic menu without the platform backend. -->
+  <div class="menu3d-stage" id="stage"></div>
+  <div class="screen main-menu cinematic">
+    <h1>StarHermit Poker</h1>
+    <p class="muted">Elo 1500 · 0W / 0L / 0D</p>
+    <div class="menu-actions">
+      <button class="primary big" type="button">Quick Play</button>
+      <button class="big" type="button">Private Table</button>
+      <button type="button">Leaderboard</button>
+      <button type="button">Replays</button>
+    </div>
+    <p class="muted small">Preview page — buttons are inert here.</p>
+  </div>
+  <script type="module">
+    import { MenuScene3D } from './src/menu3d.js';
+    window.menuScene = new MenuScene3D(document.getElementById('stage'));
+  </script>
+</body>
+</html>

@@ -99,11 +99,13 @@ Commands (inside `{"type":"cmd","data":…}`): `sync`, `fold`, `check`, `call`,
 contribution for the current betting round* — everywhere: server validation,
 client slider/presets, action history, replays.
 
-Broadcasts: `state` (per-player addressed projection — the only message that
-ever carries the recipient's hole cards), `action`, `hand-started`,
-`hand-complete`, `match-complete`. Raw session state is never broadcast; the
-deck, burn cards, and other players' hidden cards are structurally absent
-from every payload (covered by leak tests).
+Broadcasts: `state` (per-player addressed projection — the only live message
+that carries hole cards, and only the recipient's), `action`, `hand-started`,
+`hand-complete`, `match-complete`. Raw session state is never broadcast. Deck,
+burn cards, and every other player's hole-card values are structurally absent
+from all live payloads, including showdown and previous-hand summaries. The
+server computes winners and keeps reveal evidence for archived post-match
+replays; it never places opponent card values in the active table's memory.
 
 The full protocol contract is documented at the top of `server.js`.
 

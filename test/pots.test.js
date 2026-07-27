@@ -180,12 +180,13 @@ test('showdown reveals contesting hands; folded non-shown hands stay hidden', ()
   assert.deepEqual(j(revealed[1]), j([C('Ah'), C('Ad')]));
 });
 
-test('hand-complete event carries winners, pot sizes, and reveal', () => {
+test('hand-complete event carries results but no player cards', () => {
   const ctx = threeHandedCtx();
   const state = game.createSession(ctx).sessionState;
   // Everyone calls/checks to showdown.
   let guard = 0;
   const events = [];
+  const projections = [];
   while (state.hand.live && state.handNumber === 1 && guard++ < 40) {
     ctx.now += 1000;
     const res = game.onPlayerMessage({
@@ -198,6 +199,7 @@ test('hand-complete event carries winners, pot sizes, and reveal', () => {
     });
     for (const b of ok.broadcast || []) {
       if (b.to === 'all') events.push(b.data);
+      if (b.data.type === 'state') projections.push(b.data);
     }
   }
   const hc = events.find((e) => e.type === 'hand-complete');
@@ -207,7 +209,15 @@ test('hand-complete event carries winners, pot sizes, and reveal', () => {
   const potSum = hc.pots.reduce((t, p) => t + p, 0);
   const winSum = hc.winners.reduce((t, w) => t + w.amount, 0);
   assert.equal(potSum, winSum); // paid exactly what was collected
-  assert.ok(Object.keys(hc.revealedCards).length >= 2);
+  assert.equal('revealedCards' in hc, false);
+  assert.equal('holes' in hc, false);
+  assert.equal('deck' in hc, false);
+  for (const projection of projections) {
+    assert.equal('revealed' in projection.publicState, false);
+    if (projection.publicState.prevHand) {
+      assert.equal('revealed' in projection.publicState.prevHand, false);
+    }
+  }
 });
 
 test('conservation invariant across a full random match', () => {

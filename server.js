@@ -24,22 +24,22 @@
 //                                          amount added). Enforced here, in the
 //                                          client's controls, tests, and replays.
 //   { type:"sit-out-next-hand", enabled:<bool> }
-//   { type:"show-cards", enabled:<bool> }  (voluntary reveal when eligible)
+//   { type:"show-cards", enabled:<bool> }  (record reveal in archived replay)
 //   Every command may carry stateVersion:<int>; stale versions are rejected.
 //   Commands must never contain a user id — identity comes from ctx.message.from.
 //
 // BROADCASTS (broadcast entries; data shapes):
-//   { type:"state", stateVersion, you:{seat}, publicState, privateState }
-//        Per-player addressed (to:[userId]) full projection. privateState is
-//        null for spectators of hidden info; publicState never contains hole
-//        cards of active unrevealed players, the deck, or burn cards.
+//   { type:"state", stateVersion, you:{seat,holeCards,legalActions}, publicState }
+//        Per-player addressed (to:[userId]) projection. `you.holeCards` is the
+//        sole live transport field for hole cards and contains only that
+//        recipient's hand. Opponent cards, deck, and burns never leave server.
 //   { type:"action", stateVersion, handNumber, seat, action, amount, total, pot }
 //        To "all". `amount` is chips posted by this action; `total` is the
 //        player's new round contribution (used to describe raises correctly).
 //   { type:"hand-started", stateVersion, handNumber, dealerSeat,
 //        smallBlindSeat, bigBlindSeat }                     -> "all"
 //   { type:"hand-complete", stateVersion, handNumber, winners, pots,
-//        revealedCards, description }                       -> "all"
+//        description }                                      -> "all"
 //   { type:"match-complete", stateVersion, result }          -> "all"
 //   Errors return as the script's `error` field (platform sends the sender a
 //   {"type":"error",error} frame).
@@ -451,9 +451,16 @@ function publicProjection(state) {
     seats: state.seats.map((_, i) => publicSeat(state, i)),
     turnDeadlineMs: state.turnDeadlineMs,
     turnSeconds: state.config.turnDurationSeconds,
-    // Revealed cards only: showdown/voluntarily shown hands. Keyed by seat.
-    revealed: revealedCards(state),
-    prevHand: state.prevHand,
+    // Completed-hand hole cards stay server-side as replay evidence. Live
+    // clients receive only the result summary, never another seat's cards.
+    prevHand: state.prevHand ? {
+      handNumber: state.prevHand.handNumber,
+      dealer: state.prevHand.dealer,
+      winners: state.prevHand.winners,
+      description: state.prevHand.description,
+      pot: state.prevHand.pot,
+      board: state.prevHand.board,
+    } : null,
     matchResult: state.matchResult,
     config: {
       smallBlind: state.config.smallBlind,
@@ -462,18 +469,6 @@ function publicProjection(state) {
     },
     recentLog: state.log.slice(-30),
   };
-}
-
-// Cards a given broadcast may reveal to everyone: showdown participants and
-// seats that chose show-cards when eligible.
-function revealedCards(state) {
-  const out = {};
-  if (!state.hand.live && state.hand.reveal) {
-    for (const k of Object.keys(state.hand.reveal)) {
-      out[k] = state.hand.reveal[k].slice();
-    }
-  }
-  return out;
 }
 
 // Per-player projection: public view + the player's own hole cards + legal
@@ -1029,7 +1024,6 @@ function finishHand(state, ctx, ev, { winnerSeats, description, revealed, potsWo
     handNumber: state.handNumber,
     winners,
     pots: potSizes,
-    revealedCards: revealed,
     description,
   });
 
@@ -1110,6 +1104,12 @@ function finishHandShowdown(state, ctx, ev) {
 // Basic match completion (ratings land in checkpoint 17).
 function finishMatch(state, ctx, ev, winnerSeat) {
   state.matchResult = finalizeMatch(state, ctx, winnerSeat);
+  // The platform archives sessionState for participant replays. Replay data
+  // lives in state.hands, so erase the final live deck and all raw hole cards
+  // before archival; folded/mucked cards must never leak through replay JSON.
+  state.hand.deck = [];
+  state.hand.burn = [];
+  state.hand.holes = state.seats.map(() => null);
   ev.push({
     type: 'match-complete',
     stateVersion: state.actionSeq,

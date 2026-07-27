@@ -65,6 +65,11 @@ test('match completion returns result + eloUpdates and ends the session', () => 
   assert.equal(result.eloAfter[loser], 1184);
   assert.deepEqual(j(finalRes.eloUpdates), j(result.eloAfter));
   assert.ok(result.durationMs > 0);
+  // Archived session JSON contains compact replay reveals only, never the raw
+  // final deck or folded/mucked hole cards.
+  assert.deepEqual(j(finalRes.sessionState.hand.deck), []);
+  assert.deepEqual(j(finalRes.sessionState.hand.burn), []);
+  assert.ok(finalRes.sessionState.hand.holes.every((cards) => cards === null));
 });
 
 test('player documents track wins, losses, streaks, and recent games', () => {

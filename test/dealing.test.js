@@ -95,13 +95,12 @@ test('private projections carry only the recipient\'s hole cards — no leaks', 
     const ownCards = s.hand.holes[recipientSeat];
     assert.deepEqual(j(b.data.you.holeCards), j(ownCards));
 
-    // Structural leak check: the ONLY card-bearing fields in the payload are
-    // you.holeCards (own), publicState.board (empty preflop), and
-    // publicState.revealed (empty preflop). Everything else must contain no
-    // card data — deck order and other holes cannot appear by construction.
+    // Structural leak check: the ONLY private card-bearing field in the
+    // payload is you.holeCards. Public board cards are safe; opponent reveals
+    // remain server-side until an archived replay is requested after play.
     const pub = b.data.publicState;
     assert.deepEqual(j(pub.board), []);
-    assert.deepEqual(j(pub.revealed), {});
+    assert.equal('revealed' in pub, false);
     assert.equal('deck' in pub, false);
     assert.equal('holes' in pub, false);
     assert.equal('hand' in pub, false);

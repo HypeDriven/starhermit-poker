@@ -388,7 +388,7 @@ export class TableRenderer {
       const visual = seatVisual(seat.seat, Math.max(0, youSeat));
       const group = this.seatGroups[visual];
       if (!group) continue;
-      const cards = visibleCardsForSeat(seat, you, publicState.revealed);
+      const cards = visibleCardsForSeat(seat, you);
       if (cards) {
         cards.forEach((card, index) => {
           const mesh = this.makeCard(card);

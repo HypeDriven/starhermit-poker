@@ -20,18 +20,11 @@ test('seatUnit is on the unit circle and own seat is bottom center', () => {
   assert.ok(Math.abs(own.x) < 1e-9 && own.y > 0.99, 'own seat not at bottom');
 });
 
-test('visibleCardsForSeat never exposes an opponent reveal during a live hand', () => {
-  const opponent = { seat: 2, inHand: true };
+test('visibleCardsForSeat exposes only the addressed player cards', () => {
   const you = { seat: 0, holeCards: [12, 25] };
-  assert.deepEqual(visibleCardsForSeat(opponent, you, { 2: [50, 51] }), [-1, -1]);
-  assert.deepEqual(visibleCardsForSeat({ seat: 0, inHand: true }, you, {}), [12, 25]);
-});
-
-test('visibleCardsForSeat allows only post-hand public reveals', () => {
-  assert.deepEqual(
-    visibleCardsForSeat({ seat: 2, inHand: false }, { seat: 0 }, { 2: [50, 51] }),
-    [50, 51]);
-  assert.equal(visibleCardsForSeat({ seat: 2, inHand: false }, { seat: 0 }, {}), null);
+  assert.deepEqual(visibleCardsForSeat({ seat: 2, inHand: true }, you), [-1, -1]);
+  assert.deepEqual(visibleCardsForSeat({ seat: 0, inHand: true }, you), [12, 25]);
+  assert.equal(visibleCardsForSeat({ seat: 2, inHand: false }, you), null);
 });
 
 test('presetTotal honors the new-total convention and clamps', () => {

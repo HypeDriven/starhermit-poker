@@ -11,17 +11,13 @@ export function seatUnit(visual, seatCount = 6) {
   return { x: Math.cos(angle), y: Math.sin(angle) };
 }
 
-// Defense-in-depth for card privacy. Opponents get card backs while a hand is
-// live, even if a malformed/stale public projection happens to include a
-// reveal. Faces are accepted only after that seat is no longer in the hand.
-// The server remains authoritative and never projects hidden opponent cards.
-export function visibleCardsForSeat(seat, you, revealedCards) {
+// Defense-in-depth for card privacy. The live protocol never contains another
+// seat's cards; this helper therefore renders only the viewer's addressed hand
+// or anonymous backs. Showdown evidence stays server-side for later replays.
+export function visibleCardsForSeat(seat, you) {
   const own = you && you.seat === seat.seat && Array.isArray(you.holeCards) &&
     you.holeCards.length === 2;
   if (seat.inHand) return own ? you.holeCards.slice() : [-1, -1];
-
-  const revealed = revealedCards && revealedCards[seat.seat];
-  if (Array.isArray(revealed) && revealed.length === 2) return revealed.slice();
   return null;
 }
 

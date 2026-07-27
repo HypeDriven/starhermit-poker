@@ -9,7 +9,6 @@ export const GAME = Object.freeze({
   defaultSlug: 'poker',
   variant: 'nlhe', // no-limit Texas Hold'em
 
-  minPlayers: 2,
   maxSeats: 6,
   teamCount: 1, // free-for-all; seatsPerTeam = maxSeats
 

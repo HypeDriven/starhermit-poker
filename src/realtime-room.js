@@ -26,13 +26,11 @@ export function seatMap(participants) {
   return seats;
 }
 
-// The host may start once at least GAME.minPlayers seats are occupied
-// (remaining seats are backfilled with AI at start).
+// The host may start whenever the room is still in the lobby — even solo
+// (empty seats are backfilled with AI at start, so one human is enough).
 export function canStart(room, userId) {
   if (!room || room.status === 'Playing' || room.status === 'Closed') return false;
-  if (room.hostUserId !== userId) return false;
-  const occupied = (room.participants || []).filter((p) => p && !p.leftAt).length;
-  return occupied >= GAME.minPlayers;
+  return room.hostUserId === userId;
 }
 
 export function isHost(room, userId) {

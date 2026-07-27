@@ -21,22 +21,22 @@ test('seatMap ignores participants outside team 0 / seat bounds', () => {
   assert.equal(seats.every((s) => s.participant === null), true);
 });
 
-test('canStart requires host, non-terminal status, and 2+ seated players', () => {
+test('canStart requires only the host and a non-terminal status', () => {
   const room = {
     status: 'Lobby', hostUserId: 'u1',
     participants: [p('a', 'u1', 0, { isHost: true })],
   };
-  assert.equal(canStart(room, 'u1'), false); // only one player
+  assert.equal(canStart(room, 'u1'), true); // solo host: AI backfills the rest
   assert.equal(canStart(room, 'u2'), false); // not the host
-  room.participants.push(p('b', 'u2', 1));
-  assert.equal(canStart(room, 'u1'), true);
   room.status = 'Playing';
+  assert.equal(canStart(room, 'u1'), false);
+  room.status = 'Closed';
   assert.equal(canStart(room, 'u1'), false);
   room.status = 'Open';
   assert.equal(canStart(room, 'u1'), true);
-  // Left players do not count.
-  room.participants[1].leftAt = '2026-07-24T01:00:00Z';
-  assert.equal(canStart(room, 'u1'), false);
+  // A host left alone after the other player left can still start.
+  room.participants.push(p('b', 'u2', 1, { leftAt: '2026-07-24T01:00:00Z' }));
+  assert.equal(canStart(room, 'u1'), true);
 });
 
 test('isHost compares against hostUserId', () => {

@@ -126,18 +126,19 @@ export class MenuScreen {
     this.menu = el('div', { class: 'screen main-menu cinematic' },
       el('h1', { text: (gameInfo && gameInfo.name) || GAME.name }),
       el('p', {
-        class: 'muted',
+        class: 'muted bold',
         text: me.userId
           ? `Elo ${me.elo} · ${me.wins}W / ${me.losses}L / ${me.draws}D`
           : 'No-limit Texas Hold\'em · play money only',
       }),
       el('div', { class: 'menu-actions' }, quickBtn, privateBtn, boardBtn, replaysBtn),
       this.inviteSection,
-      el('p', { class: 'muted small skip-hint', text: 'Click anywhere to skip the intro' }),
+      el('p', { class: 'muted small bold skip-hint', text: 'Click anywhere to skip the intro' }),
       el('p', {
-        class: 'muted small',
-        text: 'Quick Play joins a public table (empty seats are filled by AI). ' +
-          'Private Table stays in the lobby until you start it.',
+        class: 'muted small bold',
+        text: 'Quick Play joins a public table; Private Table stays in the lobby ' +
+          'until you start it. Empty seats are filled by AI — the host can tap ' +
+          'an empty seat in the lobby to start right away.',
       }),
       this.errorLine,
     );
@@ -263,6 +264,7 @@ export class LobbyScreen {
     this.ctx = ctx;
     this.room = room;
     this.selfReady = false;
+    this.starting = false;
     this.presence = new Map(); // userId -> online
     this.pendingInvites = new Set(); // userIds with an outstanding room invite
     this.destroyed = false;
@@ -448,6 +450,8 @@ export class LobbyScreen {
   }
 
   async start() {
+    if (this.starting) return; // seat taps bypass startBtn.disabled
+    this.starting = true;
     this.startBtn.disabled = true;
     try {
       const room = await this.controller.startRoom(this.room.id);
@@ -456,6 +460,7 @@ export class LobbyScreen {
       if (room.status === 'Playing' && room.gameSessionId) this.ctx.onEnterTable(room);
     } catch (e) {
       this.showError(e);
+      this.starting = false;
       this.startBtn.disabled = false;
     }
   }
@@ -515,15 +520,30 @@ export class LobbyScreen {
     // Host controls: start only when legal; open only from Lobby.
     this.startBtn.hidden = !host;
     this.startBtn.disabled = !canStart(room, net.userId);
-    this.startBtn.title = canStart(room, net.userId)
-      ? 'Fill empty seats with AI and deal the first hand'
-      : `Needs at least ${GAME.minPlayers} seated players`;
+    this.startBtn.title = 'Fill empty seats with AI and deal the first hand';
     this.openBtn.hidden = !host || room.status !== 'Lobby';
   }
 
   renderSeat(seat, participant, room) {
     if (!participant) {
-      return el('div', { class: 'seat empty' },
+      // Hosts add AI on demand: tapping an empty seat starts the table
+      // immediately. The platform backfills EVERY empty seat at start —
+      // there is no add-one-AI endpoint — so one tap deals the first hand.
+      if (isHost(room, this.ctx.net.userId) &&
+          (room.status === 'Lobby' || room.status === 'Open')) {
+        return el('button', {
+          class: 'seat empty add-ai', type: 'button',
+          title: 'Fill empty seats with AI and deal the first hand',
+          onclick: () => this.start(),
+        },
+          el('span', { class: 'seat-name', text: `Seat ${seat + 1}` }),
+          el('span', { class: 'add-ai-cta', text: '+ Add AI' }),
+          el('span', { class: 'muted small', text: 'starts the table now' }));
+      }
+      return el('div', {
+        class: 'seat empty',
+        title: 'The host can fill empty seats with AI anytime',
+      },
         el('span', { class: 'seat-name', text: `Seat ${seat + 1}` }),
         el('span', { class: 'muted small', text: 'Empty — AI at start' }));
     }

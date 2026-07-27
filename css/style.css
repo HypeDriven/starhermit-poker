@@ -78,6 +78,18 @@ button.big { padding: 0.9rem 1.6rem; font-size: 1.1rem; }
 .main-menu.cinematic .invite-inbox { background: rgba(10, 15, 25, 0.66);
   border: 1px solid var(--line); border-radius: 12px; padding: 0.4rem 1rem;
   backdrop-filter: blur(12px); }
+/* No real glass on touch devices. A backdrop-filter makes the compositor
+   re-snapshot whatever is behind the element every frame; here that is a
+   WebGL canvas redrawing at 60fps on its own accelerated layer, and on
+   Android Chrome / iOS Safari the two race — the snapshot comes back empty
+   often enough that the buttons strobe as black boxes over the 3D scene.
+   Flat translucency reads almost the same and costs the compositor nothing. */
+@media (pointer: coarse) {
+  .main-menu.cinematic button,
+  .main-menu.cinematic .invite-inbox { backdrop-filter: none; }
+  .main-menu.cinematic button { background: linear-gradient(180deg, #26344a, #131b29); }
+  .main-menu.cinematic .invite-inbox { background: #0a0f19; }
+}
 
 /* Lobby seat grid */
 .seat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem;

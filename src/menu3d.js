@@ -107,25 +107,28 @@ const CARD_FRAG = /* glsl */`
   uniform float uTime;
   uniform float uSeed;
   void main() {
-    vec3 col;
-    float alpha;
+    // Sampled unconditionally, before any branching. An implicit-LOD fetch
+    // inside control flow that varies per fragment has undefined derivatives
+    // in GLSL ES, and mobile drivers resolve that to an arbitrary mip level —
+    // which paints the whole quad black wherever a 2x2 pixel group straddles
+    // the face/back boundary. Tumbling cards cross it constantly.
+    vec4 tex = texture2D(uMap, vUv);
+    // Procedural card back: dark glass with a glowing lattice.
+    vec2 g = abs(fract(vUv * vec2(5.0, 7.0)) - 0.5);
+    float line = smoothstep(0.44, 0.5, max(g.x, g.y));
+    vec3 back = vec3(0.015, 0.04, 0.09) + uTint * line * 0.55;
+
     // Facing is derived from the normal rather than gl_FrontFacing: several
     // mobile drivers evaluate that builtin unreliably on double-sided
     // geometry, which flips face/back per frame and flickers the cards.
+    // Selected with step()/mix() so both sides stay in uniform control flow.
     vec3 nrm = normalize(vNormalW);
     vec3 view = normalize(vViewW);
     float ndv = dot(view, nrm);
-    if (ndv > 0.0) {
-      vec4 tex = texture2D(uMap, vUv);
-      col = tex.rgb;
-      alpha = tex.a;
-    } else {
-      // Procedural card back: dark glass with a glowing lattice.
-      vec2 g = abs(fract(vUv * vec2(5.0, 7.0)) - 0.5);
-      float line = smoothstep(0.44, 0.5, max(g.x, g.y));
-      col = vec3(0.015, 0.04, 0.09) + uTint * line * 0.55;
-      alpha = 1.0;
-    }
+    float face = step(0.0, ndv);
+    vec3 col = mix(back, tex.rgb, face);
+    float alpha = mix(1.0, tex.a, face);
+
     float fres = pow(1.0 - abs(ndv), 2.0);
     float scan = sin(vWorld.y * 36.0 - uTime * 2.5 + uSeed * 17.0) * 0.5 + 0.5;
     float flick = 0.92 + 0.08 * sin(uTime * 13.0 + uSeed * 40.0);
@@ -228,7 +231,11 @@ function cardTexture(rank, suit) {
   g.fillText(suit, 64, 142);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  // No mip chain. The cards sit near 1:1 on screen so there is nothing to
+  // gain, and without mips the sample has no LOD to derive — one less thing
+  // for a mobile driver to get wrong, and 28 fewer mip pyramids in memory.
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
   return tex;
 }
 
@@ -264,6 +271,23 @@ export class MenuScene3D {
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 1.0;
     container.appendChild(r.domElement);
+
+    // Mobile GPUs drop the context under memory pressure. three.js already
+    // preventDefaults the event (so the browser will try to restore) and
+    // no-ops its own draws, but the composer keeps spinning a render loop
+    // against a dead context — which starves the driver exactly while it is
+    // trying to recover, stretching the black gap. Park the loop instead.
+    this.onContextLost = (e) => {
+      e.preventDefault();
+      cancelAnimationFrame(this.raf);
+      this.contextLost = true;
+    };
+    this.onContextRestored = () => {
+      this.contextLost = false;
+      if (!this.destroyed) this.loop();
+    };
+    r.domElement.addEventListener('webglcontextlost', this.onContextLost);
+    r.domElement.addEventListener('webglcontextrestored', this.onContextRestored);
 
     this.scene = new THREE.Scene();
     // Tight near/far keeps depth precision high — mobile GPUs often have
@@ -666,8 +690,11 @@ export class MenuScene3D {
       }
     });
     if (this.bloom) this.bloom.dispose();
+    const canvas = this.renderer.domElement;
+    canvas.removeEventListener('webglcontextlost', this.onContextLost);
+    canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
     this.renderer.dispose();
-    this.renderer.domElement.remove();
+    canvas.remove();
     this.container.classList.add('menu3d-stage--off');
   }
 }

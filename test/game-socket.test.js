@@ -20,11 +20,11 @@ class FakeWS {
   message(obj) { if (this.onmessage) this.onmessage({ data: JSON.stringify(obj) }); }
 }
 
-function makeSocket(handlers = {}) {
+function makeSocket(handlers = {}, opts = { minIntervalMs: 0 }) {
   const net = {
     tokenManager: { token: 'tok' },
   };
-  const gs = new GameSocket(net, 'session-1', handlers);
+  const gs = new GameSocket(net, 'session-1', handlers, opts);
   // Inject the fake WS implementation.
   gs.socket.WS = FakeWS;
   return gs;
@@ -133,4 +133,52 @@ test('destroy stops reconnects and closes the socket', async () => {
   FakeWS.instances[0].close();
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(FakeWS.instances.length, 1);
+});
+
+test('command bursts are paced: one frame per interval, in order', async () => {
+  FakeWS.instances = [];
+  const gs = makeSocket({}, { minIntervalMs: 40 });
+  gs.connect();
+  const ws = FakeWS.instances[0];
+  ws.open(); // sync goes out immediately
+  assert.equal(ws.sent.length, 1);
+  gs.sendCommand({ type: 'call' });
+  gs.sendCommand({ type: 'raise', amount: 200 });
+  assert.equal(ws.sent.length, 1, 'nothing may outrun the pacing interval');
+  await new Promise((r) => setTimeout(r, 90));
+  assert.equal(ws.sent.length, 3);
+  assert.deepEqual(JSON.parse(ws.sent[1]).data, { type: 'call' });
+  assert.deepEqual(JSON.parse(ws.sent[2]).data, { type: 'raise', amount: 200 });
+  gs.destroy();
+});
+
+test('a queued command is stamped with the stateVersion fresh at send time', async () => {
+  FakeWS.instances = [];
+  const gs = makeSocket({}, { minIntervalMs: 40 });
+  gs.connect();
+  const ws = FakeWS.instances[0];
+  ws.open();
+  ws.message({ type: 'game', data: { type: 'state', stateVersion: 5 } });
+  gs.sendCommand({ type: 'call' });
+  await new Promise((r) => setTimeout(r, 60)); // call drains, stamped 5
+  assert.deepEqual(JSON.parse(ws.sent[1]).data, { type: 'call', stateVersion: 5 });
+  gs.sendCommand({ type: 'check' }); // queued behind the interval
+  ws.message({ type: 'game', data: { type: 'state', stateVersion: 6 } });
+  await new Promise((r) => setTimeout(r, 60));
+  // Enqueued while the version was 5, but sent after 6 arrived.
+  assert.deepEqual(JSON.parse(ws.sent[2]).data, { type: 'check', stateVersion: 6 });
+  gs.destroy();
+});
+
+test('destroy drops the pending queue and pacing timer', async () => {
+  FakeWS.instances = [];
+  const gs = makeSocket({}, { minIntervalMs: 40 });
+  gs.connect();
+  const ws = FakeWS.instances[0];
+  ws.open();
+  gs.sendCommand({ type: 'call' });
+  gs.sendCommand({ type: 'check' });
+  gs.destroy();
+  await new Promise((r) => setTimeout(r, 90));
+  assert.equal(ws.sent.length, 1); // sync only; both queued commands dropped
 });

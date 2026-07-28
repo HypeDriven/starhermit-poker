@@ -24,6 +24,11 @@ export const GAME = Object.freeze({
   // reference pattern refreshes every 45 min).
   tokenRefreshMs: 45 * 60 * 1000,
 
+  // Client-side pacing for ws/v1/games commands: the platform disconnects a
+  // client that sends faster than the session tick rate, and the script
+  // declares tickRateHz: 1 (server.js) — so one command per second is safe.
+  cmdMinIntervalMs: 1000,
+
   // WebSocket reconnect: exponential backoff 1 s -> 30 s.
   reconnectBaseMs: 1000,
   reconnectMaxMs: 30000,

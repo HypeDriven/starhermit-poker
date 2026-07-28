@@ -1511,6 +1511,11 @@ function finalizeInvocation(state, ctx, { handsBefore, hadResult, response }) {
 }
 
 globalThis.game = {
+  // 1 Hz: values floor to whole Hz and sub-Hz rounds to 0 (ticks disabled),
+  // so this is the fastest expressible sweep. One-second ticks keep idle
+  // timeouts tight, and clients pace outgoing commands to the same cadence
+  // (GAME.cmdMinIntervalMs) so they never send faster than the tick rate.
+  tickRateHz: 1,
   createSession(ctx) {
     const state = initialState(ctx);
     syncPresence(state, ctx);

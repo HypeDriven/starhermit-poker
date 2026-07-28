@@ -22,22 +22,26 @@ export function visibleCardsForSeat(seat, you) {
 }
 
 // One raw action-log entry ([seq, handNumber, seat, action, amount]) rendered
-// for the activity feed. `seats` is the public seat array (for names); the
-// log stores chips POSTED (not raise totals), so raises read "raises N".
-// seat === -1 marks a street transition.
+// as a plain sentence for the activity feed. `seats` is the public seat array
+// (for names); the log stores chips POSTED (not raise totals), so raises read
+// "raised N". seat === -1 marks a street transition.
 export function describeLogEntry(entry, seats) {
   const [, , seat, action, amount] = entry;
-  if (seat === -1) return `${action.replace('street-', '')} dealt`;
-  const name = seats && seats[seat] ? seats[seat].name : `Seat ${seat + 1}`;
+  if (seat === -1) return `The ${action.replace('street-', '')} was dealt.`;
+  const raw = seats && seats[seat] ? seats[seat].name : `Seat ${seat + 1}`;
+  const name = raw.charAt(0).toUpperCase() + raw.slice(1);
+  const chips = Number(amount || 0).toLocaleString();
   switch (action) {
-    case 'fold': case 'timeout-fold': return `${name} folds${action.startsWith('timeout') ? ' (time)' : ''}`;
-    case 'check': case 'timeout-check': return `${name} checks${action.startsWith('timeout') ? ' (time)' : ''}`;
-    case 'call': return `${name} calls ${amount}`;
-    case 'bet': return `${name} bets ${amount}`;
-    case 'raise': return `${name} raises ${amount}`;
-    case 'all-in': return `${name} is all-in`;
-    case 'blind': return `${name} posts ${amount}`;
-    default: return `${name}: ${action} ${amount || ''}`;
+    case 'fold': return `${name} folded.`;
+    case 'timeout-fold': return `${name} ran out of time and folded.`;
+    case 'check': return `${name} checked.`;
+    case 'timeout-check': return `${name} ran out of time and checked.`;
+    case 'call': return `${name} called ${chips}.`;
+    case 'bet': return `${name} bet ${chips}.`;
+    case 'raise': return `${name} raised ${chips}.`;
+    case 'all-in': return `${name} went all-in.`;
+    case 'blind': return `${name} posted a blind of ${chips}.`;
+    default: return `${name} ${action}${amount ? ` ${chips}` : ''}.`;
   }
 }
 

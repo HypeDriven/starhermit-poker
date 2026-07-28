@@ -39,17 +39,17 @@ test('presetTotal honors the new-total convention and clamps', () => {
   assert.equal(presetTotal(la, 100, 999999, 1), 5000);
 });
 
-test('describeLogEntry renders feed lines for actions and streets', () => {
+test('describeLogEntry renders feed lines as plain sentences', () => {
   const seats = [{ name: 'alice' }, { name: 'bob' }];
-  assert.equal(describeLogEntry([3, 1, 0, 'fold', 0], seats), 'alice folds');
-  assert.equal(describeLogEntry([4, 1, 1, 'timeout-fold', 0], seats), 'bob folds (time)');
-  assert.equal(describeLogEntry([5, 1, 0, 'check', 0], seats), 'alice checks');
-  assert.equal(describeLogEntry([6, 1, 1, 'call', 200], seats), 'bob calls 200');
-  assert.equal(describeLogEntry([7, 1, 0, 'bet', 300], seats), 'alice bets 300');
-  assert.equal(describeLogEntry([8, 1, 1, 'raise', 400], seats), 'bob raises 400');
-  assert.equal(describeLogEntry([9, 1, 0, 'blind', 100], seats), 'alice posts 100');
-  assert.equal(describeLogEntry([10, 1, -1, 'street-flop', 0], seats), 'flop dealt');
+  assert.equal(describeLogEntry([3, 1, 0, 'fold', 0], seats), 'Alice folded.');
+  assert.equal(describeLogEntry([4, 1, 1, 'timeout-fold', 0], seats), 'Bob ran out of time and folded.');
+  assert.equal(describeLogEntry([5, 1, 0, 'check', 0], seats), 'Alice checked.');
+  assert.equal(describeLogEntry([6, 1, 1, 'call', 200], seats), 'Bob called 200.');
+  assert.equal(describeLogEntry([7, 1, 0, 'bet', 3000], seats), 'Alice bet 3,000.');
+  assert.equal(describeLogEntry([8, 1, 1, 'raise', 400], seats), 'Bob raised 400.');
+  assert.equal(describeLogEntry([9, 1, 0, 'blind', 100], seats), 'Alice posted a blind of 100.');
+  assert.equal(describeLogEntry([10, 1, -1, 'street-flop', 0], seats), 'The flop was dealt.');
   // Unknown seats/actions degrade gracefully.
-  assert.equal(describeLogEntry([11, 1, 5, 'fold', 0], seats), 'Seat 6 folds');
-  assert.equal(describeLogEntry([12, 1, 1, 'mystery', 50], seats), 'bob: mystery 50');
+  assert.equal(describeLogEntry([11, 1, 5, 'fold', 0], seats), 'Seat 6 folded.');
+  assert.equal(describeLogEntry([12, 1, 1, 'mystery', 50], seats), 'Bob mystery 50.');
 });

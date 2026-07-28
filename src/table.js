@@ -35,7 +35,25 @@ function cardEl(card) {
 
 // How long showdown cards stay revealed on the seat overlays after a hand.
 const REVEAL_WINDOW_MS = 8000;
-const FEED_CAP = 50;
+// The feed shows only the latest few lines — no scrolling, fits the screen.
+const FEED_CAP = 3;
+
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+// "Alice won 1,200 with Two Pair, Kings and Tens." — built from the
+// hand-complete payload rather than the server's compact description.
+function describeHandComplete(msg) {
+  if (!Array.isArray(msg.winners) || msg.winners.length === 0) {
+    return msg.description || 'The hand ended.';
+  }
+  const names = msg.winners.map((w) => cap(w.name || `Seat ${w.seat + 1}`)).join(' and ');
+  const total = msg.winners.reduce((t, w) => t + (w.amount || 0), 0).toLocaleString();
+  const desc = msg.description || '';
+  const handDesc = desc.includes(' — ') ? desc.slice(desc.lastIndexOf(' — ') + 3) : '';
+  if (handDesc) return `${names} won ${total} with ${handDesc}.`;
+  if (/everyone else folded/.test(desc)) return `${names} won ${total} — everyone else folded.`;
+  return `${names} won ${total}.`;
+}
 
 export class TableScreen {
   // ctx: { root, net, onExitToMenu() }; room: the Playing realtime room.
@@ -152,13 +170,14 @@ export class TableScreen {
   // hand lifecycle lines the log does not carry.
   onGameEvent(msg) {
     if (msg.type === 'hand-started') {
-      this.pushEvent(`Hand #${msg.handNumber} — blinds posted`);
+      this.pushEvent(`Hand #${msg.handNumber} began.`);
     } else if (msg.type === 'hand-complete') {
-      this.pushEvent(msg.description || 'Hand complete', 'win');
+      this.pushEvent(describeHandComplete(msg), 'win');
       // Show the revealed showdown cards on the seat overlays for a while.
       this.revealUntil = Date.now() + REVEAL_WINDOW_MS;
     } else if (msg.type === 'match-complete') {
-      this.pushEvent('Match complete', 'win');
+      const winner = msg.result && msg.result.winnerName;
+      this.pushEvent(winner ? `The match is over — ${cap(winner)} won.` : 'The match is over.', 'win');
       this.render();
     }
   }

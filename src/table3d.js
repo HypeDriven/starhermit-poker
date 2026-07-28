@@ -406,10 +406,10 @@ export class TableRenderer {
           mesh.scale.setScalar(visual === 0 ? 1.5 : 0.84);
           if (visual === 0) {
             // Your own cards float off the near rail: raised, nudged toward
-            // the camera and tilted face-up so they stay readable.
+            // the camera and tilted steeply face-up so they stay readable.
             mesh.position.y += 0.78;
             mesh.position.z += 0.55;
-            mesh.rotation.x = -0.62;
+            mesh.rotation.x = -0.95;
           }
           group.add(mesh);
         });

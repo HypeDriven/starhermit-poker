@@ -21,6 +21,26 @@ export function visibleCardsForSeat(seat, you) {
   return null;
 }
 
+// One raw action-log entry ([seq, handNumber, seat, action, amount]) rendered
+// for the activity feed. `seats` is the public seat array (for names); the
+// log stores chips POSTED (not raise totals), so raises read "raises N".
+// seat === -1 marks a street transition.
+export function describeLogEntry(entry, seats) {
+  const [, , seat, action, amount] = entry;
+  if (seat === -1) return `${action.replace('street-', '')} dealt`;
+  const name = seats && seats[seat] ? seats[seat].name : `Seat ${seat + 1}`;
+  switch (action) {
+    case 'fold': case 'timeout-fold': return `${name} folds${action.startsWith('timeout') ? ' (time)' : ''}`;
+    case 'check': case 'timeout-check': return `${name} checks${action.startsWith('timeout') ? ' (time)' : ''}`;
+    case 'call': return `${name} calls ${amount}`;
+    case 'bet': return `${name} bets ${amount}`;
+    case 'raise': return `${name} raises ${amount}`;
+    case 'all-in': return `${name} is all-in`;
+    case 'blind': return `${name} posts ${amount}`;
+    default: return `${name}: ${action} ${amount || ''}`;
+  }
+}
+
 // Bet-sizing preset → NEW ROUND TOTAL (the table-wide raise convention).
 // kind: 'min' | 'all' | fraction of the pot (after calling).
 export function presetTotal(la, roundCommit, pot, kind) {

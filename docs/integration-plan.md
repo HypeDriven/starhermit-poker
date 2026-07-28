@@ -31,7 +31,7 @@ Re-verification deltas (2026-07-24, second pass):
 
 **Stats/Elo**: script-owned `playerStates` documents (`elo`, `wins`, `losses`, `draws` + poker stats, capped recent-match list). Multiplayer Elo by final placement, written only via `eloUpdates`. Leaderboard reads: `GET /api/v1/leaderboards/{leaderboardId}/entries?friendsOnly=&page=&pageSize=` (`leaderboardId` from `GET /api/v1/games/{slug}`).
 
-**Replays**: platform archives the final `sessionState`; the script embeds a compact, size-capped hand/action log in state. Viewer fetches `GET /api/v1/games/{slug}/replays/mine` + `/replays/{sessionId}` and reconstructs hands using the shared `pokerRules` module. Reveal policy: only cards shown at showdown (or voluntarily shown) are visible in replays.
+**Replays**: platform archives the final `sessionState`; the script embeds a compact, size-capped hand/action log in state. Viewer fetches `GET /api/v1/games/{slug}/replays/mine` + `/replays/{sessionId}` and reconstructs hands using the shared `pokerRules` module. Reveal policy: replays are participant-only and post-match, so every dealt hand's hole cards are archived and shown (like a hand history), with per-seat win probabilities computed client-side via `pokerRules.equity`; live play still shows only showdown/voluntary reveals (`publicState.prevHand.reveal`).
 
 ## 2. Existing repository state
 

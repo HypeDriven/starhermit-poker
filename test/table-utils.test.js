@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  seatVisual, seatUnit, presetTotal, visibleCardsForSeat,
+  seatVisual, seatUnit, presetTotal, visibleCardsForSeat, describeLogEntry,
 } from '../src/table-utils.js';
 
 test('seatVisual puts the player at position 0 and rotates others', () => {
@@ -37,4 +37,19 @@ test('presetTotal honors the new-total convention and clamps', () => {
   assert.equal(presetTotal(la, 100, 1000, 1), 1700);
   // Clamped to the maximum when the pot is huge.
   assert.equal(presetTotal(la, 100, 999999, 1), 5000);
+});
+
+test('describeLogEntry renders feed lines for actions and streets', () => {
+  const seats = [{ name: 'alice' }, { name: 'bob' }];
+  assert.equal(describeLogEntry([3, 1, 0, 'fold', 0], seats), 'alice folds');
+  assert.equal(describeLogEntry([4, 1, 1, 'timeout-fold', 0], seats), 'bob folds (time)');
+  assert.equal(describeLogEntry([5, 1, 0, 'check', 0], seats), 'alice checks');
+  assert.equal(describeLogEntry([6, 1, 1, 'call', 200], seats), 'bob calls 200');
+  assert.equal(describeLogEntry([7, 1, 0, 'bet', 300], seats), 'alice bets 300');
+  assert.equal(describeLogEntry([8, 1, 1, 'raise', 400], seats), 'bob raises 400');
+  assert.equal(describeLogEntry([9, 1, 0, 'blind', 100], seats), 'alice posts 100');
+  assert.equal(describeLogEntry([10, 1, -1, 'street-flop', 0], seats), 'flop dealt');
+  // Unknown seats/actions degrade gracefully.
+  assert.equal(describeLogEntry([11, 1, 5, 'fold', 0], seats), 'Seat 6 folds');
+  assert.equal(describeLogEntry([12, 1, 1, 'mystery', 50], seats), 'bob: mystery 50');
 });

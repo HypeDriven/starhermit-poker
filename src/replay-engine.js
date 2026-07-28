@@ -37,12 +37,17 @@ export class ReplayEngine {
   }
 
   // Ordered display steps for one hand. Each step is a complete snapshot:
-  // { label, board, pot, commits[], stacks[], activeSeat, reveal, winners }.
+  // { label, board, pot, commits[], stacks[], activeSeat, reveal, winners,
+  //   holes, folded[] }.
+  // `holes` carries every dealt hand (archived post-match, participant-only);
+  // `folded` tracks which seats had folded by that step.
   stepsForHand(handIdx) {
     const hand = this.hands[handIdx];
     if (!hand) return [];
     const startStacks = this.stacksAtHandStart(handIdx);
     const commits = this.seatMeta.map(() => 0);
+    const folded = this.seatMeta.map(() => false);
+    const holes = hand.holes || null;
     const steps = [];
     const snap = (label, extra = {}) => {
       steps.push({
@@ -54,6 +59,8 @@ export class ReplayEngine {
         activeSeat: extra.activeSeat ?? -1,
         reveal: extra.reveal || null,
         winners: extra.winners || null,
+        holes,
+        folded: folded.slice(),
       });
     };
 
@@ -69,6 +76,7 @@ export class ReplayEngine {
         });
         continue;
       }
+      if (action === 'fold' || action === 'timeout-fold') folded[seat] = true;
       commits[seat] += amount;
       const name = this.seatMeta[seat] ? this.seatMeta[seat].name : `Seat ${seat + 1}`;
       snap(`${name} ${action}${amount ? ' ' + amount : ''}`, {
@@ -90,11 +98,28 @@ export class ReplayEngine {
     return steps;
   }
 
-  // Cards a replay may display for a seat in a hand: the recorded reveal only
-  // (showdown or voluntary show). Folded/mucked hands stay hidden forever.
+  // Per-seat win probability at a step, computed from the archived hole
+  // cards and the board shown at that step (folded seats get null). Lazy and
+  // memoized: equity only changes when the board or the live-seat set does.
+  // Returns null for old replays without archived holes.
+  equityForStep(handIdx, step) {
+    if (!step || !step.holes || !this.rules.equity) return null;
+    const key = `${handIdx}|${step.board.length}|${step.folded.map((f) => (f ? 1 : 0)).join('')}`;
+    if (!this._equityCache) this._equityCache = new Map();
+    if (!this._equityCache.has(key)) {
+      const holesBySeat = step.holes.map((h, i) => (h && !step.folded[i] ? h : null));
+      this._equityCache.set(key, this.rules.equity(holesBySeat, step.board));
+    }
+    return this._equityCache.get(key);
+  }
+
+  // Cards a replay may display for a seat in a hand: the full archived hand
+  // (post-match, participant-only), falling back to the recorded reveal
+  // (showdown/voluntary show) for replays archived before holes were kept.
   visibleCards(handIdx, seat) {
     const hand = this.hands[handIdx];
-    if (!hand || !hand.reveal) return null;
-    return hand.reveal[seat] || null;
+    if (!hand) return null;
+    if (hand.holes && hand.holes[seat]) return hand.holes[seat];
+    return hand.reveal ? hand.reveal[seat] || null : null;
   }
 }

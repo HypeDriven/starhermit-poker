@@ -69,17 +69,62 @@ test('stack reconstruction matches the engine truth after every hand', () => {
   }
 });
 
-test('reveal policy: replays show only recorded reveals (showdown/shown)', () => {
+test('reveal policy: replays show every dealt hand (post-match archive)', () => {
   const { state } = playMatch();
   const engine = new ReplayEngine(state, pokerRules);
   for (let h = 0; h < engine.handCount(); h++) {
-    const reveal = state.hands[h].reveal || {};
+    const hand = state.hands[h];
     for (let seat = 0; seat < 2; seat++) {
       const visible = engine.visibleCards(h, seat);
-      if (reveal[seat]) assert.deepEqual(visible, reveal[seat]);
-      else assert.equal(visible, null, `seat ${seat} hand ${h} leaked in replay`);
+      if (hand.holes && hand.holes[seat]) assert.deepEqual(visible, hand.holes[seat]);
+      else if (hand.reveal && hand.reveal[seat]) assert.deepEqual(visible, hand.reveal[seat]);
+      else assert.equal(visible, null, `seat ${seat} hand ${h} should have no cards`);
     }
   }
+});
+
+test('replay steps carry holes, fold tracking, and win probabilities', () => {
+  const { state } = playMatch();
+  const engine = new ReplayEngine(state, pokerRules);
+  for (let h = 0; h < engine.handCount(); h++) {
+    const steps = engine.stepsForHand(h);
+    for (const step of steps) {
+      assert.ok(step.holes, 'archived holes attached to every step');
+      const eq = engine.equityForStep(h, step);
+      assert.ok(eq, 'equity available');
+      let sum = 0;
+      for (let i = 0; i < eq.length; i++) {
+        if (step.folded[i] || !step.holes[i]) {
+          assert.equal(eq[i], null, `folded/absent seat ${i} has no equity`);
+        } else {
+          assert.ok(eq[i] >= 0 && eq[i] <= 1, `equity ${eq[i]} out of range`);
+          sum += eq[i];
+        }
+      }
+      assert.ok(Math.abs(sum - 1) < 1e-9, `equity sums to ${sum}`);
+    }
+  }
+});
+
+test('old replays without archived holes fall back to reveal-only', () => {
+  const replay = {
+    config: { startingStack: 10000 },
+    seats: [{ name: 'a' }, { name: 'b' }],
+    hands: [{
+      n: 1, dealer: 0, board: [0, 13, 26, 1, 14],
+      actions: [[0, 'bet', 100], [1, 'fold', 0]],
+      reveal: { 0: [12, 25] },
+      winners: [{ seat: 0, amount: 200 }],
+    }],
+  };
+  const engine = new ReplayEngine(replay, pokerRules);
+  const steps = engine.stepsForHand(0);
+  for (const step of steps) {
+    assert.equal(step.holes, null);
+    assert.equal(engine.equityForStep(0, step), null);
+  }
+  assert.deepEqual(engine.visibleCards(0, 0), [12, 25]);
+  assert.equal(engine.visibleCards(0, 1), null);
 });
 
 test('showdown replays reconstruct the winning description', () => {

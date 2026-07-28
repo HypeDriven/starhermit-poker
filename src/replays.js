@@ -176,16 +176,22 @@ export class ReplayScreen {
     this.stepLabel.textContent = step.label;
     this.boardEl.textContent = '';
     for (const c of step.board) this.boardEl.append(cardEl(c));
+    const equity = this.engine.equityForStep(this.handIdx, step);
     this.seatsEl.textContent = '';
     this.engine.seatMeta.forEach((meta, i) => {
-      const cards = step.reveal && step.reveal[i];
+      // Every dealt hand is visible in the replay (archived post-match);
+      // old replays fall back to the recorded showdown reveal.
+      const cards = step.holes ? step.holes[i] : (step.reveal && step.reveal[i]);
+      const folded = step.folded && step.folded[i];
+      const pct = equity && equity[i] != null ? Math.round(equity[i] * 100) : null;
       this.seatsEl.append(el('div', {
         class: 'replay-seat' + (i === step.activeSeat ? ' acting' : ''),
       },
         el('span', { class: 'seat-title', text: meta.name }),
         el('span', { class: 'seat-stack', text: step.stacks[i].toLocaleString() }),
         step.commits[i] > 0 ? el('span', { class: 'seat-bet', text: `in for ${step.commits[i]}` }) : '',
-        cards ? el('span', { class: 'replay-cards' }, ...cards.map(cardEl)) : '',
+        cards ? el('span', { class: `replay-cards${folded ? ' dim' : ''}` }, ...cards.map(cardEl)) : '',
+        pct !== null ? el('span', { class: 'seat-equity', text: `${pct}% to win` }) : '',
       ));
     });
   }

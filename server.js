@@ -32,7 +32,9 @@
 //   { type:"state", stateVersion, you:{seat,holeCards,legalActions}, publicState }
 //        Per-player addressed (to:[userId]) projection. `you.holeCards` is the
 //        sole live transport field for hole cards and contains only that
-//        recipient's hand. Opponent cards, deck, and burns never leave server.
+//        recipient's hand. Opponent cards, deck, and burns never leave the
+//        server DURING play; completed-hand hole cards are archived in the
+//        participant-only replay (shown at showdown live, in full post-match).
 //   { type:"action", stateVersion, handNumber, seat, action, amount, total, pot }
 //        To "all". `amount` is chips posted by this action; `total` is the
 //        player's new round contribution (used to describe raises correctly).
@@ -289,6 +291,75 @@ globalThis.pokerRules = (function () {
     return rules.evaluate(holeCards.concat(board));
   };
 
+  // --- equity ----------------------------------------------------------------
+  // Win probability per seat given known hole cards and the current board.
+  // holesBySeat: array of [c1,c2] (still in the hand) or null (out). Returns a
+  // per-seat array with a probability for active seats and null for the rest;
+  // ties split the pot fraction. Exact enumeration of the remaining deck when
+  // two or fewer board cards are unknown; otherwise a fixed-seed Monte Carlo,
+  // so replays render identical numbers every time. Deterministic, no ctx.
+  rules.equity = function (holesBySeat, board, iterations = 1000) {
+    const active = [];
+    const known = new Set(board);
+    holesBySeat.forEach((h, i) => {
+      if (!h) return;
+      active.push(i);
+      for (const c of h) known.add(c);
+    });
+    const out = holesBySeat.map(() => null);
+    if (active.length === 0) return out;
+    if (active.length === 1) {
+      out[active[0]] = 1;
+      return out;
+    }
+    const remaining = [];
+    for (let c = 0; c < 52; c++) if (!known.has(c)) remaining.push(c);
+    const need = 5 - board.length;
+    const wins = new Map(active.map((i) => [i, 0]));
+    let trials = 0;
+
+    const scoreTrial = (fullBoard) => {
+      let best = null;
+      let leaders = [];
+      for (const i of active) {
+        const ev = rules.evaluateHoldem(holesBySeat[i], fullBoard);
+        if (!best || rules.compareScores(ev.score, best) > 0) {
+          best = ev.score;
+          leaders = [i];
+        } else if (rules.compareScores(ev.score, best) === 0) {
+          leaders.push(i);
+        }
+      }
+      for (const i of leaders) wins.set(i, wins.get(i) + 1 / leaders.length);
+      trials += 1;
+    };
+
+    if (need <= 0) {
+      scoreTrial(board.slice(0, 5));
+    } else if (need === 1) {
+      for (const a of remaining) scoreTrial(board.concat([a]));
+    } else if (need === 2) {
+      for (let x = 0; x < remaining.length; x++) {
+        for (let y = x + 1; y < remaining.length; y++) {
+          scoreTrial(board.concat([remaining[x], remaining[y]]));
+        }
+      }
+    } else {
+      const rng = rules.mulberry32(0x9e3779b9);
+      for (let t = 0; t < iterations; t++) {
+        // Partial Fisher-Yates: sample `need` distinct unknown board cards.
+        const pool = remaining.slice();
+        for (let k = 0; k < need; k++) {
+          const j = k + Math.floor(rng() * (pool.length - k));
+          const tmp = pool[k]; pool[k] = pool[j]; pool[j] = tmp;
+        }
+        scoreTrial(board.concat(pool.slice(0, need)));
+      }
+    }
+    for (const i of active) out[i] = trials > 0 ? wins.get(i) / trials : 0;
+    return out;
+  };
+
   // --- pot accounting ------------------------------------------------------
 
   // Build main + side pots from per-seat hand commits.
@@ -460,6 +531,9 @@ function publicProjection(state) {
       description: state.prevHand.description,
       pot: state.prevHand.pot,
       board: state.prevHand.board,
+      // Cards shown at the showdown (contesting hands + voluntary shows).
+      // Mucked cards are never included.
+      reveal: state.prevHand.revealed || null,
     } : null,
     matchResult: state.matchResult,
     config: {
@@ -1004,13 +1078,16 @@ function finishHand(state, ctx, ev, { winnerSeats, description, revealed, potsWo
     board: hand.board.slice(),
     revealed,
   };
-  // Compact replay record.
+  // Compact replay record. `holes` archives every dealt hand (including
+  // folded/mucked cards): replays are participant-only and post-match, so
+  // full cards + win probabilities can be shown there like a hand history.
   globalThis.pokerRules.cappedPush(state.hands, {
     n: state.handNumber,
     dealer: state.dealerSeat,
     sb: hand.smallBlindSeat,
     bb: hand.bigBlindSeat,
     board: hand.board.slice(),
+    holes: hand.holes.map((h) => (h ? h.slice() : null)),
     actions: state.log.filter((l) => l[1] === state.handNumber)
       .map((l) => [l[2], l[3], l[4]]),
     reveal: revealed,
@@ -1105,8 +1182,9 @@ function finishHandShowdown(state, ctx, ev) {
 function finishMatch(state, ctx, ev, winnerSeat) {
   state.matchResult = finalizeMatch(state, ctx, winnerSeat);
   // The platform archives sessionState for participant replays. Replay data
-  // lives in state.hands, so erase the final live deck and all raw hole cards
-  // before archival; folded/mucked cards must never leak through replay JSON.
+  // lives in state.hands, whose per-hand records deliberately carry all dealt
+  // hole cards (post-match, participant-only — like a hand history). The
+  // final live deck and raw hole-card slots are still erased here.
   state.hand.deck = [];
   state.hand.burn = [];
   state.hand.holes = state.seats.map(() => null);

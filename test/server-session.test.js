@@ -162,3 +162,65 @@ test('summary deadline is an ISO string derived from turnDeadlineMs', () => {
   const res = game.onTick(roomCtx({ sessionState: created.sessionState }));
   assert.equal(res.sessionState.summary.deadline, '2024-07-20T11:00:00Z');
 });
+
+// --- showdown reveal + archived hole cards ---------------------------------
+
+function headsUpCtx(overrides = {}) {
+  return makeCtx({
+    now: 1_000_000, random: 0.42,
+    room: {
+      roomId: 'room-hu',
+      metadata: { variant: 'nlhe', startingStack: 10000, smallBlind: 50, bigBlind: 100, turnDurationSeconds: 30 },
+      roster: [
+        { userId: 'u-alice', name: 'alice', team: 0, slot: 0, ai: false },
+        { userId: 'u-bob', name: 'bob', team: 0, slot: 1, ai: false },
+      ],
+    },
+    presence: { 'u-alice': { online: true, left: false }, 'u-bob': { online: true, left: false } },
+    players: [{ id: 'u-alice', name: 'alice' }, { id: 'u-bob', name: 'bob' }],
+    ...overrides,
+  });
+}
+
+const actingUser = (state) => state.seats[state.actingSeat].userId;
+const sendCmd = (state, from, data) => game.onPlayerMessage(headsUpCtx({
+  now: 1_000_000 + state.actionSeq * 1000, sessionState: state,
+  message: { from, data },
+}));
+const lastPublicState = (res) =>
+  res.broadcast.filter((b) => b.data.type === 'state').pop().data.publicState;
+
+test('showdown projects the contesting hands in prevHand.reveal', () => {
+  let state = game.createSession(headsUpCtx()).sessionState;
+  const dealt = state.hand.holes.map((h) => h && h.slice());
+  let res = sendCmd(state, actingUser(state), { type: 'all-in' });
+  state = res.sessionState;
+  res = sendCmd(state, actingUser(state), { type: 'all-in' });
+  state = res.sessionState;
+
+  // The all-in runout completed hand #1 at a showdown.
+  const record = state.hands.find((h) => h.n === 1);
+  assert.ok(record, 'hand record archived');
+  assert.ok(Object.keys(record.reveal).length >= 2, 'showdown reveals both hands');
+
+  const pub = lastPublicState(res);
+  assert.deepEqual(j(pub.prevHand.reveal), j(record.reveal));
+  // Exactly the dealt cards — nothing invented, nothing extra.
+  for (const [seat, cards] of Object.entries(pub.prevHand.reveal)) {
+    assert.deepEqual(j(cards), j(dealt[Number(seat)]));
+  }
+});
+
+test('fold wins project no reveal; both hands stay archived for replay', () => {
+  let state = game.createSession(headsUpCtx()).sessionState;
+  const dealt = state.hand.holes.map((h) => h && h.slice());
+  const res = sendCmd(state, actingUser(state), { type: 'fold' });
+  state = res.sessionState;
+
+  const pub = lastPublicState(res);
+  assert.ok(pub.prevHand, 'prevHand projected');
+  assert.deepEqual(j(pub.prevHand.reveal || {}), {}, 'mucked cards are not revealed live');
+
+  const record = state.hands.find((h) => h.n === 1);
+  assert.deepEqual(j(record.holes), j(dealt), 'replay archives every dealt hand');
+});

@@ -6,7 +6,7 @@
 import { RoomController } from './realtime-room.js';
 import { GameSocket } from './game-socket.js';
 import { TableRenderer } from './table3d.js';
-import { seatVisual, seatUnit, presetTotal } from './table-utils.js';
+import { seatVisual, seatUnit, presetTotal, describeLogEntry } from './table-utils.js';
 import { ChatPanel } from './chat.js';
 import { VoiceController } from './voice.js';
 
@@ -22,13 +22,30 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+const RANKS = '23456789TJQKA';
+const SUIT_GLYPHS = ['♣', '♦', '♥', '♠'];
+const RED_SUITS = new Set([1, 2]);
+function cardEl(card) {
+  const suit = (card / 13) | 0;
+  return el('span', {
+    class: `pcard${RED_SUITS.has(suit) ? ' red' : ''}`,
+    text: `${RANKS[card % 13]}${SUIT_GLYPHS[suit]}`,
+  });
+}
+
+// How long showdown cards stay revealed on the seat overlays after a hand.
+const REVEAL_WINDOW_MS = 8000;
+const FEED_CAP = 50;
+
 export class TableScreen {
   // ctx: { root, net, onExitToMenu() }; room: the Playing realtime room.
   constructor(ctx, room) {
     this.ctx = ctx;
     this.room = room;
     this.gameState = null;      // last 'state' message { you, publicState }
-    this.events = [];           // recent game events (feed)
+    this.feedItems = [];        // recent activity lines (newest last)
+    this.seenLogSeq = -1;       // highest action-log seq already in the feed
+    this.revealUntil = 0;       // epoch ms until showdown cards stay visible
     this.destroyed = false;
 
     this.roomCtl = new RoomController(ctx.net, {
@@ -57,6 +74,7 @@ export class TableScreen {
     this.game = new GameSocket(this.ctx.net, sessionId, {
       onState: (msg) => {
         this.gameState = msg;
+        this.syncFeedFromLog(msg.publicState);
         this.render();
       },
       onEvent: (msg) => this.onGameEvent(msg),
@@ -129,46 +147,40 @@ export class TableScreen {
     return this.ctx.net.profiles.displayName(userId, s ? s.name : undefined);
   }
 
+  // Fold/street/action lines are rebuilt from publicState.recentLog (see
+  // syncFeedFromLog) so they survive reconnects; this handler adds only the
+  // hand lifecycle lines the log does not carry.
   onGameEvent(msg) {
-    if (msg.type === 'action') {
-      this.pushEvent(this.describeAction(msg));
-    } else if (msg.type === 'hand-started') {
+    if (msg.type === 'hand-started') {
       this.pushEvent(`Hand #${msg.handNumber} — blinds posted`);
     } else if (msg.type === 'hand-complete') {
-      this.pushEvent(msg.description || 'Hand complete');
+      this.pushEvent(msg.description || 'Hand complete', 'win');
+      // Show the revealed showdown cards on the seat overlays for a while.
+      this.revealUntil = Date.now() + REVEAL_WINDOW_MS;
     } else if (msg.type === 'match-complete') {
-      this.pushEvent('Match complete');
+      this.pushEvent('Match complete', 'win');
       this.render();
     }
   }
 
-  describeAction(msg) {
-    const name = this.seatName(msg.seat);
-    switch (msg.action) {
-      case 'fold': case 'timeout-fold': return `${name} folds${msg.action.startsWith('timeout') ? ' (time)' : ''}`;
-      case 'check': case 'timeout-check': return `${name} checks${msg.action.startsWith('timeout') ? ' (time)' : ''}`;
-      case 'call': return `${name} calls ${msg.amount}`;
-      case 'bet': return `${name} bets ${msg.amount}`;
-      case 'raise': return `${name} raises to ${(msg.total ?? msg.amount).toLocaleString()}`;
-      case 'all-in': return `${name} is all-in`;
-      case 'blind': return `${name} posts ${msg.amount}`;
-      default: return `${name}: ${msg.action} ${msg.amount || ''}`;
+  // Append action/street lines from the broadcast action log, skipping
+  // entries already fed (dedup by monotonically increasing action seq).
+  syncFeedFromLog(pub) {
+    if (!pub || !Array.isArray(pub.recentLog)) return;
+    for (const entry of pub.recentLog) {
+      if (!Array.isArray(entry) || entry[0] <= this.seenLogSeq) continue;
+      this.seenLogSeq = entry[0];
+      this.pushEvent(describeLogEntry(entry, pub.seats));
     }
   }
 
-  seatName(seatIndex) {
-    const seats = this.gameState?.publicState?.seats;
-    if (seats && seats[seatIndex]) return seats[seatIndex].name;
-    return `Seat ${seatIndex + 1}`;
-  }
-
-  pushEvent(text) {
-    this.events.push(text);
-    while (this.events.length > 6) this.events.shift();
+  pushEvent(text, cls = '') {
+    this.feedItems.push({ text, cls });
+    while (this.feedItems.length > FEED_CAP) this.feedItems.shift();
     if (this.feed) {
       this.feed.textContent = '';
-      for (const e of this.events.slice().reverse()) {
-        this.feed.append(el('div', { class: 'feed-item', text: e }));
+      for (const item of this.feedItems.slice().reverse()) {
+        this.feed.append(el('div', { class: `feed-item${item.cls ? ' ' + item.cls : ''}`, text: item.text }));
       }
     }
   }
@@ -325,6 +337,10 @@ export class TableScreen {
     if (pub) {
       const youSeat = you && you.seat >= 0 ? you.seat : 0;
       const seatCount = pub.seats.length || 6;
+      // Showdown cards stay face-up on the seat panels for a short window
+      // after the hand (the next hand may already have started).
+      const reveal = this.revealUntil > Date.now() && pub.prevHand
+        ? pub.prevHand.reveal : null;
       for (const s of pub.seats) {
         const v = seatVisual(s.seat, youSeat, seatCount);
         const { x, y } = seatUnit(v, seatCount);
@@ -355,6 +371,10 @@ export class TableScreen {
           badges.length ? el('div', { class: 'seat-flags', text: badges.join(' ') }) : '',
           s.seat === pub.actingSeat ? el('div', { class: 'seat-timer' }) : '',
         );
+        const shown = reveal && reveal[s.seat];
+        if (shown) {
+          seatEl.append(el('div', { class: 'seat-reveal' }, ...shown.map(cardEl)));
+        }
         this.seatOverlay.append(seatEl);
       }
     }
@@ -405,6 +425,12 @@ export class TableScreen {
 
   renderTimer() {
     if (this.destroyed) return;
+    // Expire the showdown reveal window even when no new state arrives.
+    if (this.revealUntil && Date.now() >= this.revealUntil) {
+      this.revealUntil = 0;
+      this.render();
+      return;
+    }
     const pub = this.gameState?.publicState;
     if (!pub || !pub.turnDeadlineMs || pub.actingSeat < 0) return;
     // turnDeadlineMs is an absolute epoch from the authoritative server.

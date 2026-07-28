@@ -403,13 +403,13 @@ export class TableRenderer {
           const mesh = this.makeCard(card);
           mesh.position.set((index - 0.5) * 0.39, index * 0.012, 0);
           mesh.rotation.y = (index - 0.5) * -0.17;
-          mesh.scale.setScalar(visual === 0 ? 1 : 0.84);
+          mesh.scale.setScalar(visual === 0 ? 1.5 : 0.84);
           if (visual === 0) {
-            // Your own cards lie on the near rail, whose brown lip covers
-            // them from the camera: lift them off it and tilt the faces up.
-            mesh.position.y += 0.3;
-            mesh.position.z -= 0.18;
-            mesh.rotation.x = -0.5;
+            // Your own cards float off the near rail: raised, nudged toward
+            // the camera and tilted face-up so they stay readable.
+            mesh.position.y += 0.78;
+            mesh.position.z += 0.55;
+            mesh.rotation.x = -0.62;
           }
           group.add(mesh);
         });

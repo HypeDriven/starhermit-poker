@@ -4,7 +4,7 @@
 
 import { GAME } from './config.js';
 import { ApiError } from './net.js';
-import { RoomController, seatMap, canStart, isHost } from './realtime-room.js';
+import { RoomController, seatMap, seatCountOf, canStart, isHost } from './realtime-room.js';
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -160,9 +160,10 @@ export class MenuScreen {
       el('p', { class: 'muted small bold skip-hint', text: 'Click anywhere to skip the intro' }),
       el('p', {
         class: 'muted small bold',
-        text: 'AI opponents sit down when the table is created (Quick Play only ' +
-          'when it opens a new table). In the lobby the host can tap an AI seat, ' +
-          'then an empty seat, to move it. Seats still empty at start are filled by AI.',
+        text: 'Choosing N AI opponents deals you in against exactly N of them. ' +
+          'With 0 the table seats 6: invites and matchmaking fill it, and seats ' +
+          'still empty at start become AI. In the lobby the host can tap an AI ' +
+          'seat, then an empty seat, to move it.',
       }),
       this.errorLine,
     );
@@ -537,11 +538,14 @@ export class LobbyScreen {
     const { net } = this.ctx;
     const room = this.room;
     const participants = (room.participants || []).filter((p) => !p.leftAt);
-    const seats = seatMap(participants);
+    const seatCount = seatCountOf(room);
+    const seats = seatMap(participants, seatCount);
     const host = isHost(room, net.userId);
+    // Seat moves need a free slot to drop into; a full room has none.
+    this.canMoveAi = participants.length < seatCount;
 
     this.statusLine.textContent =
-      `Status: ${room.status} · ${participants.length}/${GAME.maxSeats} seats` +
+      `Status: ${room.status} · ${participants.length}/${seatCount} seats` +
       (room.status === 'Open'
         ? ` · open for matchmaking (AI backfill ~${room.config?.backfillAfterSeconds ?? GAME.roomBackfillAfterSeconds}s after opening)`
         : '') +
@@ -572,7 +576,7 @@ export class LobbyScreen {
     // The host arranges AI players while the room is in Lobby/Open: tap an AI
     // seat to pick it up, then tap an empty seat to place it there. Empty
     // seats that remain at start are still backfilled with AI by the platform.
-    const canArrange = isHost(room, this.ctx.net.userId) &&
+    const canArrange = this.canMoveAi && isHost(room, this.ctx.net.userId) &&
       (room.status === 'Lobby' || room.status === 'Open');
     if (!participant) {
       if (canArrange && this.selectedAi) {

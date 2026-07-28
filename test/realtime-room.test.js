@@ -21,6 +21,13 @@ test('seatMap ignores participants outside team 0 / seat bounds', () => {
   assert.equal(seats.every((s) => s.participant === null), true);
 });
 
+test('seatMap honors the room seat count', () => {
+  const seats = seatMap([p('a', 'u1', 0), p('b', null, 1), p('c', null, 3)], 2);
+  assert.equal(seats.length, 2);
+  assert.equal(seats[0].participant.id, 'a');
+  assert.equal(seats[1].participant.id, 'b'); // seat 3 is out of bounds
+});
+
 test('canStart requires only the host and a non-terminal status', () => {
   const room = {
     status: 'Lobby', hostUserId: 'u1',
@@ -93,11 +100,14 @@ test('createRoom sends the documented FFA config and poker metadata', async () =
   });
 });
 
-test('createRoom forwards the requested AI opponent count', async () => {
+test('createRoom forwards the requested AI opponent count and sizes the table', async () => {
   const net = fakeNet();
   const controller = new RoomController(net);
   await controller.createRoom('private', 3);
+  // Host + exactly 3 AI: start backfills every empty seat, so the table must
+  // be sized down or extra AI would be dealt in.
   assert.equal(net.posts[0].body.aiPlayers, 3);
+  assert.equal(net.posts[0].body.seatsPerTeam, 4);
 });
 
 test('setSeats posts the seat assignment to the seats endpoint', async () => {

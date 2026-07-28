@@ -1570,27 +1570,37 @@ globalThis.game = {
     assignAiProfiles(state, ctx);
     runAiLoop(state, ctx, ev);
 
-    const msg = ctx.message || {};
-    const data = msg.data;
-    if (!data || typeof data !== 'object' || typeof data.type !== 'string') {
-      return fail('Malformed command');
-    }
-    // Stale-command rejection (optional version supplied by the client).
-    if (data.stateVersion !== undefined &&
-        data.stateVersion !== state.actionSeq) {
-      return fail('Stale state version');
-    }
-    if (state.matchResult) return fail('The match is over');
-
-    // Merge any timeout-transition events into this invocation's broadcasts.
+    // Merge any sweep events (timeout folds, AI actions) into broadcasts.
     const withEvents = (broadcast) => {
       for (const e of ev) broadcast.unshift({ to: 'all', data: e });
       return broadcast;
     };
+    // A validation failure after the sweep must still persist it: the
+    // platform keeps the pre-invocation document unless sessionState is
+    // returned, so a bare fail() would silently roll the sweep back.
+    const failAfterSweep = (message) => {
+      if (ev.length === 0) return fail(message);
+      return finalizeInvocation(state, ctx, {
+        handsBefore, hadResult,
+        response: { ok: false, error: message, broadcast: withEvents(stateBroadcasts(state)) },
+      });
+    };
+
+    const msg = ctx.message || {};
+    const data = msg.data;
+    if (!data || typeof data !== 'object' || typeof data.type !== 'string') {
+      return failAfterSweep('Malformed command');
+    }
+    // Stale-command rejection (optional version supplied by the client).
+    if (data.stateVersion !== undefined &&
+        data.stateVersion !== state.actionSeq) {
+      return failAfterSweep('Stale state version');
+    }
+    if (state.matchResult) return failAfterSweep('The match is over');
 
     if (data.type === 'sync') {
       const mine = privateProjection(state, msg.from);
-      if (mine.seat < 0) return fail('You are not seated at this table');
+      if (mine.seat < 0) return failAfterSweep('You are not seated at this table');
       return finalizeInvocation(state, ctx, {
         handsBefore, hadResult,
         response: {
@@ -1610,12 +1620,12 @@ globalThis.game = {
 
     // Preference commands: allowed from any seated human, in or out of a hand.
     const seatIndex = state.seats.findIndex((s) => s.userId === msg.from);
-    if (seatIndex < 0) return fail('You are not seated at this table');
+    if (seatIndex < 0) return failAfterSweep('You are not seated at this table');
     const seat = state.seats[seatIndex];
-    if (seat.ai) return fail('This seat is played by the AI');
+    if (seat.ai) return failAfterSweep('This seat is played by the AI');
 
     if (data.type === 'sit-out-next-hand') {
-      if (typeof data.enabled !== 'boolean') return fail('enabled must be a boolean');
+      if (typeof data.enabled !== 'boolean') return failAfterSweep('enabled must be a boolean');
       seat.sitOutNext = data.enabled;
       state.actionSeq += 1;
       return finalizeInvocation(state, ctx, {
@@ -1625,7 +1635,7 @@ globalThis.game = {
     }
 
     if (data.type === 'show-cards') {
-      if (typeof data.enabled !== 'boolean') return fail('enabled must be a boolean');
+      if (typeof data.enabled !== 'boolean') return failAfterSweep('enabled must be a boolean');
       // Meaningful only while the player holds cards; the reveal is applied
       // when the hand completes (checkpoint 10).
       seat.showCards = data.enabled;
@@ -1639,18 +1649,18 @@ globalThis.game = {
     // Gameplay actions: only the acting human seat, only during a live hand.
     const ACTIONS = ['fold', 'check', 'call', 'bet', 'raise', 'all-in'];
     if (ACTIONS.includes(data.type)) {
-      if (!state.hand.live) return fail('No hand is running');
-      if (state.actingSeat !== seatIndex) return fail('It is not your turn');
-      if (seat.folded) return fail('You have folded');
-      if (seat.allIn) return fail('You are all-in');
-      if (seat.eliminated) return fail('You are eliminated');
+      if (!state.hand.live) return failAfterSweep('No hand is running');
+      if (state.actingSeat !== seatIndex) return failAfterSweep('It is not your turn');
+      if (seat.folded) return failAfterSweep('You have folded');
+      if (seat.allIn) return failAfterSweep('You are all-in');
+      if (seat.eliminated) return failAfterSweep('You are eliminated');
       if ((data.type === 'bet' || data.type === 'raise') &&
           !globalThis.pokerRules.isValidChips(data.amount)) {
-        return fail('amount must be a non-negative safe integer');
+        return failAfterSweep('amount must be a non-negative safe integer');
       }
 
       const applied = applyPlayerAction(state, seatIndex, data.type, data.amount);
-      if (applied.error) return fail(applied.error);
+      if (applied.error) return failAfterSweep(applied.error);
       ev.push({
         type: 'action',
         stateVersion: state.actionSeq,
@@ -1669,13 +1679,19 @@ globalThis.game = {
         if (startHand(state, ctx)) ev.push(handStartedBroadcast(state).data);
       }
 
+      // The next actor is often an AI seat: let it act in this same
+      // invocation — waiting for a tick would stall the table for a whole
+      // sweep interval. runAiLoop chains further hands internally.
+      assignAiProfiles(state, ctx);
+      runAiLoop(state, ctx, ev);
+
       return finalizeInvocation(state, ctx, {
         handsBefore, hadResult,
         response: { ok: true, broadcast: withEvents(stateBroadcasts(state)) },
       });
     }
 
-    return fail('Unknown command: ' + data.type);
+    return failAfterSweep('Unknown command: ' + data.type);
   },
 
   onTick(ctx) {
@@ -1689,14 +1705,15 @@ globalThis.game = {
     const ev = [];
     processExpiredDeadline(state, ctx, ev);
 
-    // AI seats act during the tick sweep.
-    assignAiProfiles(state, ctx);
-    runAiLoop(state, ctx, ev);
-
-    // Between hands: start the next one (a hand may have ended via timeout).
+    // Between hands: start the next one (a hand may have ended via timeout) —
+    // before the AI loop, so a new hand's AI opener acts in the same sweep.
     if (!state.hand.live && !state.matchResult) {
       if (startHand(state, ctx)) ev.push(handStartedBroadcast(state).data);
     }
+
+    // AI seats act during the tick sweep.
+    assignAiProfiles(state, ctx);
+    runAiLoop(state, ctx, ev);
     const broadcast = stateBroadcasts(state);
     for (const e of ev) broadcast.unshift({ to: 'all', data: e });
     return finalizeInvocation(state, ctx, {

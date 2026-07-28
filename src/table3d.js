@@ -383,9 +383,18 @@ export class TableRenderer {
     }
 
     const youSeat = you && Number.isInteger(you.seat) ? you.seat : 0;
+    // Rooms can seat fewer than 6 (e.g. host + N AI): re-lay the seat ring so
+    // a heads-up table puts the opponent across from you.
+    const seatCount = (publicState.seats || []).length || 6;
+    for (let visual = 0; visual < this.seatGroups.length; visual++) {
+      const group = this.seatGroups[visual];
+      const { x, y } = seatUnit(visual, seatCount);
+      group.position.set(x * SEAT_RX, 0.37, y * SEAT_RZ);
+      group.visible = visual < seatCount;
+    }
     for (const group of this.seatGroups) this.clearGroup(group);
     for (const seat of publicState.seats || []) {
-      const visual = seatVisual(seat.seat, Math.max(0, youSeat));
+      const visual = seatVisual(seat.seat, Math.max(0, youSeat), seatCount);
       const group = this.seatGroups[visual];
       if (!group) continue;
       const cards = visibleCardsForSeat(seat, you);
@@ -395,6 +404,13 @@ export class TableRenderer {
           mesh.position.set((index - 0.5) * 0.39, index * 0.012, 0);
           mesh.rotation.y = (index - 0.5) * -0.17;
           mesh.scale.setScalar(visual === 0 ? 1 : 0.84);
+          if (visual === 0) {
+            // Your own cards lie on the near rail, whose brown lip covers
+            // them from the camera: lift them off it and tilt the faces up.
+            mesh.position.y += 0.3;
+            mesh.position.z -= 0.18;
+            mesh.rotation.x = -0.5;
+          }
           group.add(mesh);
         });
       }
@@ -408,7 +424,7 @@ export class TableRenderer {
 
     const actor = (publicState.seats || []).find((seat) => seat.seat === publicState.actingSeat);
     if (actor) {
-      const visual = seatVisual(actor.seat, Math.max(0, youSeat));
+      const visual = seatVisual(actor.seat, Math.max(0, youSeat), seatCount);
       const target = this.seatGroups[visual];
       this.actingRing.visible = true;
       this.actingRing.position.set(target.position.x, 0.385, target.position.z);

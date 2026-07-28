@@ -13,13 +13,20 @@ const ROOMS = '/api/v1/realtime/rooms';
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested)
 
-// Map roster participants onto the table's fixed seats (teamCount is always 1,
-// so seat index === slot). Returns an array of GAME.maxSeats entries:
+// The room's actual seat count, defaulting to the full table size when the
+// config is unavailable (e.g. a partial roster view).
+export function seatCountOf(room) {
+  const n = room && room.config && room.config.seatsPerTeam;
+  return Number.isInteger(n) && n > 0 ? n : GAME.maxSeats;
+}
+
+// Map roster participants onto the table's seats (teamCount is always 1,
+// so seat index === slot). Returns an array of `seatCount` entries:
 // { seat, participant | null }.
-export function seatMap(participants) {
-  const seats = Array.from({ length: GAME.maxSeats }, (_, i) => ({ seat: i, participant: null }));
+export function seatMap(participants, seatCount = GAME.maxSeats) {
+  const seats = Array.from({ length: seatCount }, (_, i) => ({ seat: i, participant: null }));
   for (const p of participants || []) {
-    if (p && p.team === 0 && Number.isInteger(p.slot) && p.slot >= 0 && p.slot < GAME.maxSeats) {
+    if (p && p.team === 0 && Number.isInteger(p.slot) && p.slot >= 0 && p.slot < seatCount) {
       seats[p.slot] = { seat: p.slot, participant: p };
     }
   }
@@ -80,7 +87,11 @@ export class RoomController {
     const body = {
       gameSlug: this.net.scope, // ignored for scoped launch tokens (game_scope wins)
       teamCount: GAME.teamCount,
-      seatsPerTeam: GAME.maxSeats,
+      // With AI opponents requested, size the table to exactly host + AI:
+      // start backfills EVERY empty seat, so a 6-seat room would deal in
+      // extra AI the player never asked for. aiPlayers = 0 keeps the full
+      // 6-seat table for matchmaking/invites (empties backfill as before).
+      seatsPerTeam: aiPlayers > 0 ? 1 + aiPlayers : GAME.maxSeats,
       backfillAfterSeconds: GAME.roomBackfillAfterSeconds,
       // AI opponents are seated immediately and hold real seats (matchmaking
       // fills only what remains); the host can re-seat them via setSeats.

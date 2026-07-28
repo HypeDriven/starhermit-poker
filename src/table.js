@@ -324,9 +324,10 @@ export class TableScreen {
     this.seatOverlay.textContent = '';
     if (pub) {
       const youSeat = you && you.seat >= 0 ? you.seat : 0;
+      const seatCount = pub.seats.length || 6;
       for (const s of pub.seats) {
-        const v = seatVisual(s.seat, youSeat);
-        const { x, y } = seatUnit(v);
+        const v = seatVisual(s.seat, youSeat, seatCount);
+        const { x, y } = seatUnit(v, seatCount);
         const seatEl = el('div', {
           class: 'seat-panel' +
             (s.seat === pub.actingSeat ? ' acting' : '') +

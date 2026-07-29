@@ -6,7 +6,11 @@
 
 export const GAME = Object.freeze({
   name: 'StarHermit Poker',
-  defaultSlug: 'poker',
+  // Local-dev convenience only, and no longer a real slug: the platform assigns each game a uid
+  // and uses it as the slug, so there is no name to guess. In production this is never consulted —
+  // the slug comes from the launch token's game_scope claim. For local dev, paste the game's uid
+  // into the dev panel (it is also the game's <uid>.starhermit.com subdomain).
+  defaultSlug: '',
   variant: 'nlhe', // no-limit Texas Hold'em
 
   maxSeats: 6,

@@ -25,24 +25,24 @@ function recordingClient({ token = 'tok', baseUrl = '', responses = [] } = {}) {
 
 test('adds Authorization: Bearer to authenticated calls', async () => {
   const { client, calls } = recordingClient({ token: 'abc' });
-  await client.get('/api/v1/games/poker');
+  await client.get('/api/v1/games/83fd04b1-3cbe-4b09-a251-3733ad4b9d94');
   assert.equal(calls[0].options.headers.Authorization, 'Bearer abc');
 });
 
 test('omits Authorization when there is no token', async () => {
   const { client, calls } = recordingClient({ token: null });
-  await client.get('/api/v1/games/poker');
+  await client.get('/api/v1/games/83fd04b1-3cbe-4b09-a251-3733ad4b9d94');
   assert.equal(calls[0].options.headers.Authorization, undefined);
 });
 
 test('joins baseUrl for local dev and keeps same-origin relative in production', async () => {
   const prod = recordingClient({ baseUrl: '' });
-  await prod.client.get('/api/v1/games/poker');
-  assert.equal(prod.calls[0].url, '/api/v1/games/poker');
+  await prod.client.get('/api/v1/games/83fd04b1-3cbe-4b09-a251-3733ad4b9d94');
+  assert.equal(prod.calls[0].url, '/api/v1/games/83fd04b1-3cbe-4b09-a251-3733ad4b9d94');
 
   const dev = recordingClient({ baseUrl: 'http://localhost:5000/' });
-  await dev.client.get('/api/v1/games/poker');
-  assert.equal(dev.calls[0].url, 'http://localhost:5000/api/v1/games/poker');
+  await dev.client.get('/api/v1/games/83fd04b1-3cbe-4b09-a251-3733ad4b9d94');
+  assert.equal(dev.calls[0].url, 'http://localhost:5000/api/v1/games/83fd04b1-3cbe-4b09-a251-3733ad4b9d94');
 });
 
 test('rejects non-rooted paths', async () => {
@@ -79,17 +79,29 @@ test('createNetContext reads scope and user id from the token claims', () => {
   const b64url = (obj) =>
     Buffer.from(JSON.stringify(obj)).toString('base64')
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  const token = `${b64url({ alg: 'none' })}.${b64url({ sub: 'u-1', game_scope: 'poker' })}.sig`;
+  // game_scope carries the game's uid — the platform assigns it and nothing chooses it.
+  const uid = '83fd04b1-3cbe-4b09-a251-3733ad4b9d94';
+  const token = `${b64url({ alg: 'none' })}.${b64url({ sub: 'u-1', game_scope: uid })}.sig`;
   const net = createNetContext({ token, apiBase: 'http://localhost:5000' });
-  assert.equal(net.scope, 'poker');
-  assert.equal(net.userId, 'u-1');
-  assert.equal(net.client.baseUrl, 'http://localhost:5000');
-  net.tokenManager.destroy();
+  // destroy() in a finally: the token manager holds a timer, so an assertion failing before it
+  // ran used to leave the test runner hanging instead of reporting the failure.
+  try {
+    assert.equal(net.scope, uid);
+    assert.equal(net.userId, 'u-1');
+    assert.equal(net.client.baseUrl, 'http://localhost:5000');
+  } finally {
+    net.tokenManager.destroy();
+  }
 });
 
-test('createNetContext falls back to the default slug without claims', () => {
+test('createNetContext has no slug to fall back to without claims', () => {
+  // There is no default any more: a slug is the game's uid, so no value could be guessed here.
+  // Local dev supplies it explicitly through the auth panel; production always has the claim.
   const net = createNetContext({ token: 'garbage' });
-  assert.equal(net.scope, 'poker');
-  assert.equal(net.userId, null);
-  net.tokenManager.destroy();
+  try {
+    assert.equal(net.scope, '');
+    assert.equal(net.userId, null);
+  } finally {
+    net.tokenManager.destroy();
+  }
 });

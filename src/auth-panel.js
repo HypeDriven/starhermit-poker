@@ -30,6 +30,7 @@ export function showAuthPanel(root, { onReady, error = null }) {
   });
   const slugInput = el('input', {
     id: 'dev-slug', type: 'text', spellcheck: 'false', value: GAME.defaultSlug,
+    placeholder: 'game uid (the <uid>.starhermit.com subdomain)',
   });
   const jwtInput = el('textarea', {
     id: 'dev-jwt', rows: '4', spellcheck: 'false',
@@ -47,7 +48,7 @@ export function showAuthPanel(root, { onReady, error = null }) {
         'hands the game a launch token; for local development, mint one yourself.',
     }),
     el('label', { for: 'dev-api-base', text: 'API base' }), apiBaseInput,
-    el('label', { for: 'dev-slug', text: 'Game slug' }), slugInput,
+    el('label', { for: 'dev-slug', text: 'Game uid' }), slugInput,
     el('label', { for: 'dev-jwt', text: 'Platform JWT' }), jwtInput,
     submit, errorLine,
   );

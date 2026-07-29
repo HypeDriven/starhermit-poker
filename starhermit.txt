@@ -1,6 +1,10 @@
 # StarHermit game manifest — see https://wiki.starhermit.com/docs/api/github-games.html
 name=StarHermit Poker
-slug=poker
+# The platform assigns this game a uid and uses it as the game's slug — the same
+# value as its <uid>.starhermit.com address. Nothing here can set it: a name a
+# developer could choose would be something two games could fight over. The game
+# client reads its own slug from the launch token's game_scope claim, so nothing
+# is hard-coded to it.
 launch=index.html
 owner=2712e04e-461b-4d23-81ae-e40b429128a8
 server=server.js

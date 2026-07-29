@@ -11,6 +11,8 @@ const TABLE_RX = 4.35;
 const TABLE_RZ = 2.72;
 const SEAT_RX = 3.62;
 const SEAT_RZ = 2.34;
+// World-space point the dealt/flopped cards fly in from (front of the felt).
+const DECK_POS = new THREE.Vector3(1.7, 0.62, -1.05);
 const RANKS = '23456789TJQKA';
 const SUITS = ['♣', '♦', '♥', '♠'];
 const RED_SUITS = new Set([1, 2]);
@@ -152,6 +154,9 @@ export class TableRenderer {
     this.clock = new THREE.Clock();
     this.cardTextures = new Map();
     this.dynamicGroups = [];
+    this.tweens = [];  // in-flight card fly-in animations
+    // Diff state for animation triggers (hand number / board growth).
+    this._anim = { handNumber: 0, boardLen: 0 };
 
     this.buildLights();
     this.buildRoom();
@@ -167,6 +172,7 @@ export class TableRenderer {
     const loop = () => {
       if (this._disposed) return;
       const t = this.clock.getElapsedTime();
+      this._stepTweens(t);
       if (this.actingRing) {
         const glow = 0.58 + Math.sin(t * 4.2) * 0.25;
         this.actingRing.material.opacity = glow;
@@ -313,6 +319,51 @@ export class TableRenderer {
     return group;
   }
 
+  // --- card fly-in animation --------------------------------------------------
+  // Cards are rebuilt on every state redraw, so animations are tweens over a
+  // freshly created mesh's transform. A tween dies automatically when its
+  // mesh is removed by the next redraw.
+
+  // Animate `mesh` from world position `from` (converted into its parent
+  // group's local space by the caller) to its already-assigned slot,
+  // spinning and arcing slightly on the way.
+  flyIn(mesh, from, { delay = 0, spin = Math.PI * 2, arc = 0.35, dur = 0.5 } = {}) {
+    this.tweens.push({
+      mesh,
+      fromPos: from.clone(),
+      toPos: mesh.position.clone(),
+      fromRotY: mesh.rotation.y + spin,
+      toRotY: mesh.rotation.y,
+      fromRotX: 0,
+      toRotX: mesh.rotation.x,
+      arc,
+      start: this.clock.getElapsedTime() + delay,
+      dur,
+    });
+    mesh.position.copy(from);
+  }
+
+  _stepTweens(t) {
+    if (!this.tweens.length) return;
+    this.tweens = this.tweens.filter((tw) => {
+      if (!tw.mesh.parent) return false; // cleared by a redraw
+      const k = (t - tw.start) / tw.dur;
+      if (k < 0) return true; // waiting for its stagger slot
+      if (k >= 1) {
+        tw.mesh.position.copy(tw.toPos);
+        tw.mesh.rotation.y = tw.toRotY;
+        tw.mesh.rotation.x = tw.toRotX;
+        return false;
+      }
+      const e = 1 - Math.pow(1 - k, 3); // easeOutCubic
+      tw.mesh.position.lerpVectors(tw.fromPos, tw.toPos, e);
+      tw.mesh.position.y += Math.sin(Math.PI * e) * tw.arc;
+      tw.mesh.rotation.y = tw.fromRotY + (tw.toRotY - tw.fromRotY) * e;
+      tw.mesh.rotation.x = tw.fromRotX + (tw.toRotX - tw.fromRotX) * e;
+      return true;
+    });
+  }
+
   makeChipStack(amount, compact = false) {
     const group = new THREE.Group();
     const count = Math.min(compact ? 10 : 14, Math.max(1, Math.ceil(Math.log2(Math.max(2, amount / 25)))));
@@ -366,12 +417,24 @@ export class TableRenderer {
 
   // Full redraw from a projected public state + the viewer's private view.
   update(publicState, you) {
+    // Animation triggers: a new hand deals the hole cards; community cards
+    // fly in as the board grows (an all-in runout grows it by 3-5 at once,
+    // which reads as a rapid deal-out).
+    const handChanged = publicState.handNumber !== this._anim.handNumber;
     this.clearGroup(this.boardGroup);
     const board = publicState.board || [];
+    const boardAdded = handChanged ? 0 : Math.max(0, board.length - this._anim.boardLen);
     board.forEach((card, i) => {
       const mesh = this.makeCard(card);
       mesh.position.set((i - 2) * 0.67, 0, -0.08);
       mesh.rotation.y = (i - 2) * -0.018;
+      if (i >= board.length - boardAdded) {
+        this.boardGroup.updateWorldMatrix(true, false);
+        this.flyIn(mesh, this.boardGroup.worldToLocal(DECK_POS.clone()), {
+          delay: (i - (board.length - boardAdded)) * 0.14,
+          arc: 0.25,
+        });
+      }
       this.boardGroup.add(mesh);
     });
 
@@ -420,6 +483,13 @@ export class TableRenderer {
             mesh.position.z -= (group.position.z / len) * 0.38;
             mesh.position.y += 0.1;
           }
+          if (handChanged) {
+            // Dealt from the deck, staggered seat by seat.
+            group.updateWorldMatrix(true, false);
+            this.flyIn(mesh, group.worldToLocal(DECK_POS.clone()), {
+              delay: (visual * 2 + index) * 0.1,
+            });
+          }
           group.add(mesh);
         });
       }
@@ -441,10 +511,13 @@ export class TableRenderer {
     } else {
       this.actingRing.visible = false;
     }
+
+    this._anim = { handNumber: publicState.handNumber, boardLen: board.length };
   }
 
   dispose() {
     this._disposed = true;
+    this.tweens = [];
     if (this._raf) cancelAnimationFrame(this._raf);
     this.resizeObserver.disconnect();
     this.scene.traverse((obj) => {

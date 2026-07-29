@@ -9,6 +9,7 @@ import { TableRenderer } from './table3d.js';
 import { seatVisual, seatUnit, presetTotal, describeLogEntry } from './table-utils.js';
 import { ChatPanel } from './chat.js';
 import { VoiceController } from './voice.js';
+import { SoundFX } from './sounds.js';
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -65,6 +66,9 @@ export class TableScreen {
     this.seenLogSeq = -1;       // highest action-log seq already in the feed
     this.revealUntil = 0;       // epoch ms until showdown cards stay visible
     this.destroyed = false;
+    this.sounds = new SoundFX();
+    // Diff state for sound triggers (mirrors the renderer's animation diffs).
+    this._soundState = { handNumber: 0, boardLen: 0, pot: 0, myTurn: false };
 
     this.roomCtl = new RoomController(ctx.net, {
       onRoster: (r) => {
@@ -93,6 +97,7 @@ export class TableScreen {
       onState: (msg) => {
         this.gameState = msg;
         this.syncFeedFromLog(msg.publicState);
+        this.playStateSounds(msg);
         this.render();
       },
       onEvent: (msg) => this.onGameEvent(msg),
@@ -173,6 +178,7 @@ export class TableScreen {
       this.pushEvent(`Hand #${msg.handNumber} began.`);
     } else if (msg.type === 'hand-complete') {
       this.pushEvent(describeHandComplete(msg), 'win');
+      this.sounds.win();
       // Show the revealed showdown cards on the seat overlays for a while.
       this.revealUntil = Date.now() + REVEAL_WINDOW_MS;
     } else if (msg.type === 'match-complete') {
@@ -180,6 +186,22 @@ export class TableScreen {
       this.pushEvent(winner ? `The match is over — ${cap(winner)} won.` : 'The match is over.', 'win');
       this.render();
     }
+  }
+
+  // Sound effects driven by state diffs: a deal swish on a new hand, a card
+  // snap when the board grows, chip clicks when the pot grows, and a soft
+  // blip when the action moves to you.
+  playStateSounds(msg) {
+    const pub = msg.publicState;
+    if (!pub) return;
+    const prev = this._soundState;
+    const boardLen = (pub.board || []).length;
+    const myTurn = !!(msg.you && msg.you.legalActions);
+    if (pub.handNumber !== prev.handNumber) this.sounds.deal();
+    else if (boardLen > prev.boardLen) this.sounds.place();
+    if (pub.pot > prev.pot) this.sounds.chips();
+    if (myTurn && !prev.myTurn) this.sounds.turn();
+    this._soundState = { handNumber: pub.handNumber, boardLen, pot: pub.pot, myTurn };
   }
 
   // Append action/street lines from the broadcast action log, skipping
@@ -264,8 +286,19 @@ export class TableScreen {
       },
     });
     this.voiceList = el('span', { class: 'voice-list' });
+    // Sound effects (procedural, subtle; the context unlocks on first tap).
+    this.soundBtn = el('button', {
+      type: 'button', text: 'Sound: on',
+      onclick: () => {
+        this.sounds.setEnabled(!this.sounds.enabled);
+        this.soundBtn.textContent = this.sounds.enabled ? 'Sound: on' : 'Sound: off';
+        if (this.sounds.enabled) this.sounds.unlock();
+      },
+    });
     this.voicePanel = el('div', { class: 'voice-panel' },
-      this.voiceBtn, this.muteBtn, this.voiceList);
+      this.voiceBtn, this.muteBtn, this.soundBtn, this.voiceList);
+    this._unlockSound = () => this.sounds.unlock();
+    root.addEventListener('pointerdown', this._unlockSound);
 
     this.screen = el('div', { class: 'table-screen' },
       this.statusLine, stage, actionBar, this.voicePanel, this.chatContainer,
@@ -480,6 +513,7 @@ export class TableScreen {
   destroy() {
     this.destroyed = true;
     this.ctx.net.profiles.removeListener(this._profileListener);
+    if (this._unlockSound) this.ctx.root.removeEventListener('pointerdown', this._unlockSound);
     if (this.timerInterval) clearInterval(this.timerInterval);
     if (this.voice) this.voice.destroy();
     if (this.chat) this.chat.destroy();

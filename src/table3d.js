@@ -411,6 +411,14 @@ export class TableRenderer {
             mesh.position.y += 0.78;
             mesh.position.z += 0.55;
             mesh.rotation.x = 0.6;
+          } else {
+            // Opponent seats sit on the rail band: slide their cards inward
+            // onto the felt and lift them so the brown rail lip doesn't
+            // cover the outer edge.
+            const len = Math.hypot(group.position.x, group.position.z) || 1;
+            mesh.position.x -= (group.position.x / len) * 0.38;
+            mesh.position.z -= (group.position.z / len) * 0.38;
+            mesh.position.y += 0.1;
           }
           group.add(mesh);
         });

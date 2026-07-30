@@ -13,7 +13,7 @@ const SEAT_RX = 3.62;
 const SEAT_RZ = 2.34;
 // World-space point the dealt/flopped cards fly in from (front of the felt).
 const DECK_POS = new THREE.Vector3(1.7, 0.62, -1.05);
-const RANKS = '23456789TJQKA';
+const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const SUITS = ['♣', '♦', '♥', '♠'];
 const RED_SUITS = new Set([1, 2]);
 
@@ -426,7 +426,10 @@ export class TableRenderer {
     const boardAdded = handChanged ? 0 : Math.max(0, board.length - this._anim.boardLen);
     board.forEach((card, i) => {
       const mesh = this.makeCard(card);
-      mesh.position.set((i - 2) * 0.67, 0, -0.08);
+      // Community cards are the table's focus: render them larger than the
+      // hole cards and space them to match.
+      mesh.scale.setScalar(1.28);
+      mesh.position.set((i - 2) * 0.8, 0, -0.08);
       mesh.rotation.y = (i - 2) * -0.018;
       if (i >= board.length - boardAdded) {
         this.boardGroup.updateWorldMatrix(true, false);

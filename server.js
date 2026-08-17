@@ -1589,11 +1589,15 @@ function finalizeInvocation(state, ctx, { handsBefore, hadResult, response }) {
 }
 
 globalThis.game = {
-  // 1 Hz: values floor to whole Hz and sub-Hz rounds to 0 (ticks disabled),
-  // so this is the fastest expressible sweep. One-second ticks keep idle
+  // 1 Hz, declared deliberately: rates are fractional (0.01 Hz is the slowest
+  // and only an explicit 0 disables ticks), and a script that declares nothing
+  // is ticked at the platform's 0.25 Hz default. One-second ticks keep idle
   // timeouts tight, and clients pace outgoing commands to the same cadence
   // (GAME.cmdMinIntervalMs) so they never send faster than the tick rate.
   tickRateHz: 1,
+  // Keep finished sessions as replays; the platform records none unless a game
+  // asks for them, and the hand history viewer reads the archived state.
+  replays: true,
   createSession(ctx) {
     const state = initialState(ctx);
     syncPresence(state, ctx);

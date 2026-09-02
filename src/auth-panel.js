@@ -21,7 +21,8 @@ function el(tag, attrs = {}, ...children) {
 
 // onReady({ token, apiBase }) is called once a launch token has been minted
 // and cached. onError(message) renders into the panel's error line.
-export function showAuthPanel(root, { onReady, error = null }) {
+// onBack, when given, adds a button returning to the local menu.
+export function showAuthPanel(root, { onReady, error = null, onBack = null }) {
   root.textContent = '';
 
   const apiBaseInput = el('input', {
@@ -52,6 +53,11 @@ export function showAuthPanel(root, { onReady, error = null }) {
     el('label', { for: 'dev-jwt', text: 'Platform JWT' }), jwtInput,
     submit, errorLine,
   );
+  if (onBack) {
+    const back = el('button', { type: 'button', text: 'Back to menu' });
+    back.addEventListener('click', onBack);
+    form.append(back);
+  }
   root.append(form);
 
   submit.addEventListener('click', async () => {

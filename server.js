@@ -1809,3 +1809,56 @@ globalThis.game = {
     });
   },
 };
+
+// ---------------------------------------------------------------------------
+// Local static file server (Node only).
+// `PORT=8803 node server.js` serves the game directory for local play and QA.
+// Inert in the browser and in the platform sandbox — neither defines
+// `process`. The server body lives inside a string so non-Node parsers (the
+// browser's classic-script loader, vm test sandboxes, Jint) never parse
+// Node-only module syntax.
+if (typeof process !== 'undefined' && process && process.env && process.env.PORT) {
+  new Function(String.raw`
+    return (async () => {
+      const http = await import('node:http');
+      const fs = await import('node:fs');
+      const path = await import('node:path');
+      const root = path.dirname(path.resolve(process.argv[1] || '.'));
+      const port = parseInt(process.env.PORT, 10) || 8000;
+      const MIME = {
+        '.html': 'text/html; charset=utf-8',
+        '.js': 'application/javascript; charset=utf-8',
+        '.mjs': 'application/javascript; charset=utf-8',
+        '.css': 'text/css; charset=utf-8',
+        '.json': 'application/json; charset=utf-8',
+        '.svg': 'image/svg+xml',
+        '.png': 'image/png',
+        '.ico': 'image/x-icon',
+        '.glb': 'model/gltf-binary',
+        '.txt': 'text/plain; charset=utf-8',
+      };
+      http.createServer((req, res) => {
+        let pathname;
+        try {
+          pathname = decodeURIComponent(new URL(req.url || '/', 'http://localhost').pathname);
+        } catch {
+          res.writeHead(404); res.end('not found'); return;
+        }
+        if (pathname === '/') pathname = '/index.html';
+        const filePath = path.join(root, pathname);
+        if (filePath !== root && !filePath.startsWith(root + path.sep)) {
+          res.writeHead(403); res.end('forbidden'); return;
+        }
+        fs.readFile(filePath, (err, data) => {
+          if (err) { res.writeHead(404); res.end('not found'); return; }
+          res.writeHead(200, {
+            'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
+          });
+          res.end(data);
+        });
+      }).listen(port, () => {
+        console.log('StarHermit Poker local server on http://localhost:' + port);
+      });
+    })();
+  `)().catch((e) => { console.error(e); process.exitCode = 1; });
+}

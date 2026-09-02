@@ -204,6 +204,14 @@ button.preset { flex: 1; padding: .24rem .4rem; border-radius: 7px; font-size: .
 .feed-item.win { border-left-color: rgba(255,209,102,.75); color: #ecd9a0; }
 .seat-reveal { display: flex; gap: .2rem; margin-top: .18rem; justify-content: center; }
 .seat-reveal .pcard { font-size: .68rem; padding: .08rem .3rem; }
+/* Community cards in the table center, and the player's own hole cards on
+   their seat panel (offline text-mode table). */
+.board-cards { display: flex; gap: .3rem; justify-content: center; flex-wrap: wrap;
+  margin-top: .45rem; }
+.board-cards .pcard { font-size: .85rem; padding: .2rem .45rem; }
+.seat-cards { display: flex; gap: .2rem; margin-top: .18rem; justify-content: center; }
+.seat-cards .pcard { font-size: .72rem; padding: .1rem .32rem; }
+.match-result + button { margin-top: .5rem; pointer-events: auto; }
 
 /* Chat */
 .chat-panel { background: #101827; border: 1px solid #2a3a52; border-radius: 10px;

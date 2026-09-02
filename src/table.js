@@ -26,7 +26,7 @@ function el(tag, attrs = {}, ...children) {
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const SUIT_GLYPHS = ['♣', '♦', '♥', '♠'];
 const RED_SUITS = new Set([1, 2]);
-function cardEl(card) {
+export function cardEl(card) {
   const suit = (card / 13) | 0;
   return el('span', {
     class: `pcard${RED_SUITS.has(suit) ? ' red' : ''}`,
@@ -43,7 +43,7 @@ const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 // "Alice won 1,200 with Two Pair, Kings and Tens." — built from the
 // hand-complete payload rather than the server's compact description.
-function describeHandComplete(msg) {
+export function describeHandComplete(msg) {
   if (!Array.isArray(msg.winners) || msg.winners.length === 0) {
     return msg.description || 'The hand ended.';
   }

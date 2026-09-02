@@ -22,6 +22,7 @@ import { TableScreen } from './table.js';
 import { LeaderboardScreen } from './leaderboard.js';
 import { ReplayListScreen, ReplayScreen } from './replays.js';
 import { sharedProfiles } from './profiles.js';
+import { LocalMenuScreen, LocalTableScreen } from './offline.js';
 
 const bootScreen = () => document.getElementById('screen-boot');
 const screenRoot = () => document.getElementById('screen-root');
@@ -163,6 +164,26 @@ async function bootWithToken(token, apiBase, { production, deepLinkSessionId }) 
   }
 }
 
+// Local (no platform launch) screens: offline table vs AI, with the dev
+// sign-in panel behind a secondary option for multiplayer development.
+function makeLocalCtx() {
+  return {
+    root: screenRoot(),
+    onPlayOffline: () => switchScreen(new LocalTableScreen(makeLocalCtx())),
+    onRematch: () => switchScreen(new LocalTableScreen(makeLocalCtx())),
+    onExitToMenu: () => switchScreen(new LocalMenuScreen(makeLocalCtx())),
+    onShowSignIn: () => {
+      if (currentScreen && currentScreen.destroy) currentScreen.destroy();
+      currentScreen = null;
+      showAuthPanel(screenRoot(), {
+        onBack: () => switchScreen(new LocalMenuScreen(makeLocalCtx())),
+        onReady: ({ token: t, apiBase: base }) =>
+          bootWithToken(t, base, { production: false, deepLinkSessionId: null }),
+      });
+    },
+  };
+}
+
 function boot() {
   const { token, sessionId } = captureLaunchCredentials();
 
@@ -179,11 +200,11 @@ function boot() {
     return;
   }
 
+  // No platform launch and no cached dev token: land on the local menu —
+  // Play starts an offline table against AI; the dev sign-in panel stays
+  // available for multiplayer development.
   leaveBootScreen();
-  showAuthPanel(screenRoot(), {
-    onReady: ({ token: t, apiBase: base }) =>
-      bootWithToken(t, base, { production: false, deepLinkSessionId: null }),
-  });
+  switchScreen(new LocalMenuScreen(makeLocalCtx()));
 }
 
 boot();

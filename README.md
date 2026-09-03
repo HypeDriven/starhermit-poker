@@ -47,7 +47,7 @@ table's match and nothing else.
 | `server.js` | The entire server-authoritative game (Jint script) + shared `pokerRules` |
 | `index.html` | Entry point (import map; loads `server.js` for replay rules) |
 | `src/` | Client modules (net, rooms, game socket, table, chat, voice, …) |
-| `test/` | `node:test` suites; `server.js` is loaded via `vm` exactly as the sandbox sees it |
+| `tests/` | `node:test` suites; `server.js` is loaded via `vm` exactly as the sandbox sees it |
 | `docs/integration-plan.md` | Verified API contract notes and checkpoint plan |
 
 ## Local development
@@ -67,11 +67,11 @@ table's match and nothing else.
 Tests and checks:
 
 ```bash
-npm test          # node --test test/*.test.js (140 tests, zero dependencies)
+npm test          # node --test tests/*.test.js (140 tests, zero dependencies)
 node --check server.js && for f in src/*.js; do node --check "$f"; done
 ```
 
-The test harness (`test/harness.js`) drives the script with deterministic
+The test harness (`tests/harness.js`) drives the script with deterministic
 `ctx.now`/`ctx.random` adapters; production randomness comes only from the
 host-provided `ctx.random`.
 

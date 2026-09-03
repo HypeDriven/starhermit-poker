@@ -62,7 +62,7 @@ The repository is **empty** (git repo, no commits on disk, no files). There is n
 | `src/leaderboard.js` | Global + friends leaderboard |
 | `src/replays.js` | Replay list + viewer (uses shared rules) |
 | `src/app.js` | Screen router, lifecycle cleanup, boot/reconnect flow |
-| `test/*.test.js`, `test/harness.js` | node:test suites + seeded ctx adapters |
+| `tests/*.test.js`, `tests/harness.js` | node:test suites + seeded ctx adapters |
 | `README.md` | Local dev, deployment, API notes, protocol, security review, limitations |
 
 ## 4. Documented StarHermit constraints affecting design

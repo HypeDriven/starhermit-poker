@@ -41,6 +41,17 @@ const FEED_CAP = 3;
 
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
+// localStorage key for the sound on/off preference (per-origin, survives reloads).
+const SOUND_ENABLED_KEY = 'poker.soundEnabled';
+
+function readSoundEnabled() {
+  try { return localStorage.getItem(SOUND_ENABLED_KEY) !== '0'; } catch { return true; }
+}
+
+function writeSoundEnabled(on) {
+  try { localStorage.setItem(SOUND_ENABLED_KEY, on ? '1' : '0'); } catch { /* storage unavailable */ }
+}
+
 // "Alice won 1,200 with Two Pair, Kings and Tens." — built from the
 // hand-complete payload rather than the server's compact description.
 export function describeHandComplete(msg) {
@@ -67,6 +78,7 @@ export class TableScreen {
     this.revealUntil = 0;       // epoch ms until showdown cards stay visible
     this.destroyed = false;
     this.sounds = new SoundFX();
+    this.sounds.setEnabled(readSoundEnabled());
     // Diff state for sound triggers (mirrors the renderer's animation diffs).
     this._soundState = { handNumber: 0, boardLen: 0, pot: 0, myTurn: false };
 
@@ -230,10 +242,10 @@ export class TableScreen {
     const { root } = this.ctx;
     root.textContent = '';
 
-    this.statusLine = el('div', { class: 'table-status muted small' });
+    this.statusLine = el('div', { class: 'table-status muted small', 'aria-live': 'polite' });
     this.centerInfo = el('div', { class: 'table-center' });
-    this.feed = el('div', { class: 'event-feed' });
-    this.errorLine = el('p', { class: 'error', hidden: '' });
+    this.feed = el('div', { class: 'event-feed', 'aria-live': 'polite' });
+    this.errorLine = el('p', { class: 'error', hidden: '', role: 'alert' });
 
     this.glContainer = el('div', { class: 'gl-stage' });
     this.seatOverlay = el('div', { class: 'seat-overlay' });
@@ -246,7 +258,7 @@ export class TableScreen {
     this.checkCallBtn = el('button', { type: 'button', onclick: () => this.actCheckCall() });
     this.betRaiseBtn = el('button', { class: 'primary', type: 'button', onclick: () => this.actBetRaise() });
     this.allInBtn = el('button', { type: 'button', text: 'All-in', onclick: () => this.act('all-in') });
-    this.amountInput = el('input', { type: 'range', class: 'bet-slider' });
+    this.amountInput = el('input', { type: 'range', class: 'bet-slider', 'aria-label': 'Bet or raise total' });
     this.amountLabel = el('span', { class: 'bet-amount' });
     this.presets = el('div', { class: 'bet-presets' });
     for (const [label, fn] of [
@@ -288,9 +300,10 @@ export class TableScreen {
     this.voiceList = el('span', { class: 'voice-list' });
     // Sound effects (procedural, subtle; the context unlocks on first tap).
     this.soundBtn = el('button', {
-      type: 'button', text: 'Sound: on',
+      type: 'button', text: this.sounds.enabled ? 'Sound: on' : 'Sound: off',
       onclick: () => {
         this.sounds.setEnabled(!this.sounds.enabled);
+        writeSoundEnabled(this.sounds.enabled);
         this.soundBtn.textContent = this.sounds.enabled ? 'Sound: on' : 'Sound: off';
         if (this.sounds.enabled) this.sounds.unlock();
       },

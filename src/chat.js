@@ -98,7 +98,7 @@ export class ChatPanel {
   mount(container) {
     this.list = el('div', { class: 'chat-list' });
     this.errorEl = el('div', { class: 'chat-error error small', hidden: '' });
-    this.input = el('input', { type: 'text', maxlength: '2000', placeholder: 'Message…' });
+    this.input = el('input', { type: 'text', maxlength: '2000', placeholder: 'Message…', 'aria-label': 'Chat message' });
     this.sendBtn = el('button', { type: 'button', text: 'Send' });
     const send = () => this.send();
     this.sendBtn.addEventListener('click', send);

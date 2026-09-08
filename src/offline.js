@@ -192,10 +192,10 @@ export class LocalTableScreen {
     const { root } = this.ctx;
     root.textContent = '';
 
-    this.statusLine = el('div', { class: 'table-status muted small' });
+    this.statusLine = el('div', { class: 'table-status muted small', 'aria-live': 'polite' });
     this.centerInfo = el('div', { class: 'table-center' });
-    this.feed = el('div', { class: 'event-feed' });
-    this.errorLine = el('p', { class: 'error', hidden: '' });
+    this.feed = el('div', { class: 'event-feed', 'aria-live': 'polite' });
+    this.errorLine = el('p', { class: 'error', hidden: '', role: 'alert' });
     this.seatOverlay = el('div', { class: 'seat-overlay' });
 
     const stage = el('div', { class: 'table-stage game-board' },
@@ -205,7 +205,7 @@ export class LocalTableScreen {
     this.checkCallBtn = el('button', { type: 'button', onclick: () => this.actCheckCall() });
     this.betRaiseBtn = el('button', { class: 'primary', type: 'button', onclick: () => this.actBetRaise() });
     this.allInBtn = el('button', { type: 'button', text: 'All-in', onclick: () => this.act('all-in') });
-    this.amountInput = el('input', { type: 'range', class: 'bet-slider' });
+    this.amountInput = el('input', { type: 'range', class: 'bet-slider', 'aria-label': 'Bet or raise total' });
     this.amountLabel = el('span', { class: 'bet-amount' });
     this.presets = el('div', { class: 'bet-presets' });
     for (const [label, fn] of [

@@ -1,0 +1,4 @@
+# dev-only e2e tooling artifacts
+node_modules/
+*.log
+.DS_Store

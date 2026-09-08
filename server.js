@@ -913,7 +913,7 @@ function applyPlayerAction(state, seatIndex, type, amount) {
       action = 'raise';
     } else action = 'call';
   } else {
-    return 'Unknown action: ' + type;
+    return { error: 'Unknown action: ' + type };
   }
 
   // Commit chips and update raise tracking.
@@ -1847,6 +1847,13 @@ if (typeof process !== 'undefined' && process && process.env && process.env.PORT
         if (pathname === '/') pathname = '/index.html';
         const filePath = path.join(root, pathname);
         if (filePath !== root && !filePath.startsWith(root + path.sep)) {
+          res.writeHead(403); res.end('forbidden'); return;
+        }
+        // Dev assets are never served: tests, tools, dependencies, dotfiles.
+        const rel = path.relative(root, filePath);
+        const segments = rel.split(path.sep);
+        if (segments.some((seg) => seg.startsWith('.') ||
+            seg === 'tests' || seg === 'tools' || seg === 'node_modules')) {
           res.writeHead(403); res.end('forbidden'); return;
         }
         fs.readFile(filePath, (err, data) => {

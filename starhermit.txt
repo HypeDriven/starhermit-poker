@@ -12,4 +12,4 @@ server=server.js
 # .opus clips by design — the asset audit skips the sfx requirements when it
 # sees this marker.
 sfx=synthesized
-cover=coverart.png
+cover=cover.jpg

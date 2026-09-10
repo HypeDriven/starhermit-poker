@@ -8,4 +8,8 @@ name=StarHermit Poker
 launch=index.html
 owner=2712e04e-461b-4d23-81ae-e40b429128a8
 server=server.js
+# All UI sound is synthesized in src/sounds.js (WebAudio); there are no authored
+# .opus clips by design — the asset audit skips the sfx requirements when it
+# sees this marker.
+sfx=synthesized
 cover=coverart.png

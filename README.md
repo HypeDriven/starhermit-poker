@@ -56,8 +56,10 @@ table's match and nothing else.
    some setups).
 2. Serve this repo: `python3 -m http.server 8080` (any static server works).
 3. Open `http://localhost:8080/index.html` — with no `#game_token` in the URL
-   the local-dev auth panel appears. Paste a full platform JWT, keep the API
-   base at `http://localhost:5000`, and mint a launch token. The token is
+   you land on the local menu, whose **Play** starts an offline table against
+   AI seats (the same `server.js` rules driven in-browser, no network or
+   sign-in). The local-dev auth panel is also available: paste a full platform
+   JWT, keep the API base at `http://localhost:5000`, and mint a launch token. The token is
    cached in `sessionStorage` for the tab (documented dev pattern);
    production tokens never touch storage.
 4. Two browsers (or an incognito window) can share a table: Quick Play joins
@@ -67,7 +69,8 @@ table's match and nothing else.
 Tests and checks:
 
 ```bash
-npm test          # node --test tests/*.test.js (140 tests, zero dependencies)
+npm test          # node --test tests/*.test.js (176 tests, zero dependencies)
+npm run test:e2e  # headless-Chrome playthrough of the offline table (dev only)
 node --check server.js && for f in src/*.js; do node --check "$f"; done
 ```
 
@@ -84,10 +87,10 @@ host-provided `ctx.random`.
 4. Pin a commit: `PUT /api/v1/me/github-games/{id}/deployment` `{ "commit": "<sha>" }`;
    poll `GET .../deployment` until live. The game is served at its hosted URL
    and launched by the platform with `#game_token=<jwt>`.
-5. **Turn timers**: the platform's timer service drives `onTick` (per-game
-   default 300 s, platform sweep 60 s, minimum 15 s). Timeout enforcement also
-   happens lazily on every invocation, but for prompt 30-second turn clocks,
-   ask the operator to schedule the fastest available sweep for `poker`.
+5. **Turn timers**: `server.js` declares `game.tickRateHz: 1`, so the platform's
+   timer service drives `onTick` with one-second sweeps and timeout enforcement
+   (also applied lazily on every invocation) fires within ~1 s of a deadline —
+   no operator sweep request needed.
 
 ## Protocol (client ↔ `server.js`)
 
@@ -134,8 +137,8 @@ The full protocol contract is documented at the top of `server.js`.
   script-side unlock hook (verified in the wiki); a client-claimed unlock
   would be exploitable. `src/achievements.js` holds the catalog and a pure
   derivation from script-authoritative evidence for future use.
-- **Turn-timeout granularity** equals the platform tick interval (see
-  Deployment §5); with default sweeps a 30 s deadline may fire late.
+- **Turn-timeout granularity** equals the declared tick interval — `tickRateHz: 1`
+  means ≤ 1 s (see Deployment §5).
 - **Voice fallback**: the server-relayed Opus binary path is not implemented;
   voice requires WebRTC-capable browsers (all modern browsers).
 - **Ready state is transient** (realtime control frames only — the platform

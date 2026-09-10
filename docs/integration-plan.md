@@ -61,8 +61,18 @@ The repository is **empty** (git repo, no commits on disk, no files). There is n
 | `src/table3d.js` | three.js table/seat/card rendering |
 | `src/leaderboard.js` | Global + friends leaderboard |
 | `src/replays.js` | Replay list + viewer (uses shared rules) |
+| `src/replay-engine.js` | Replay timeline scrubbing + speed control |
 | `src/app.js` | Screen router, lifecycle cleanup, boot/reconnect flow |
+| `src/auth-panel.js` | Local-dev token/API-base panel |
+| `src/offline.js` | No-launch local menu + offline table vs AI (in-browser `globalThis.game`) |
+| `src/sounds.js` | Procedural WebAudio UI sounds (no audio assets) |
+| `src/menu3d.js`, `src/menu3d-physics.js` | Cinematic three.js lobby menu + camera physics (loads `assets/casino.glb`) |
+| `src/table-utils.js` | Shared seat/preset/log-rendering helpers (table + offline) |
+| `src/achievements.js` | Achievement catalog + derivation from script evidence (not client-wired; limitation #1) |
+| `preview-menu.html` | Dev preview of the 3D menu without the platform backend |
+| `coverart.png`, `icon.png`, `favicon.svg` | Platform cover + icons |
 | `tests/*.test.js`, `tests/harness.js` | node:test suites + seeded ctx adapters |
+| `tests/e2e.mjs` | Headless-Chrome playthrough of the offline table (dev only) |
 | `README.md` | Local dev, deployment, API notes, protocol, security review, limitations |
 
 ## 4. Documented StarHermit constraints affecting design

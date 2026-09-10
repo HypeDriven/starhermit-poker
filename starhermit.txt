@@ -1,5 +1,5 @@
 # StarHermit game manifest — see https://wiki.starhermit.com/docs/api/github-games.html
-name=StarHermit Poker
+name=Poker
 # The platform assigns this game a uid and uses it as the game's slug — the same
 # value as its <uid>.starhermit.com address. Nothing here can set it: a name a
 # developer could choose would be something two games could fight over. The game

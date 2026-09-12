@@ -123,6 +123,19 @@ export class MenuScreen {
       type: 'button', text: 'Replays',
       onclick: () => this.ctx.onShowReplays && this.ctx.onShowReplays(),
     });
+    const helpBtn = el('button', {
+      type: 'button', text: 'How to play', onclick: () => this.toggleHelp(),
+      'aria-expanded': 'false',
+    });
+    this.helpPanel = el('div', { class: 'help-panel', hidden: '' },
+      el('h2', { text: "Texas Hold'em in a minute" }),
+      el('p', { text: 'Everyone gets two private cards. Five shared cards arrive in three deals (flop, turn, river). Make the best five-card hand from any of the seven; the best hand — or the last player who has not folded — wins the pot.' }),
+      el('p', { text: 'Each betting round you can Fold (give up the hand), Check/Call (match the current bet), Bet/Raise (put in more) or go All-in.' }),
+      el('h3', { text: 'Hand rankings, best to worst' }),
+      el('ol', {},
+        ...['Royal flush — A K Q J 10, one suit', 'Straight flush — five in sequence, one suit', 'Four of a kind', 'Full house — three of a kind plus a pair', 'Flush — five of one suit', 'Straight — five in sequence', 'Three of a kind', 'Two pair', 'One pair', 'High card']
+          .map((t) => el('li', { text: t }))),
+    );
 
     this.inviteSection = el('div', { class: 'invite-inbox', hidden: '' });
 
@@ -154,7 +167,8 @@ export class MenuScreen {
           ? `Elo ${me.elo} · ${me.wins}W / ${me.losses}L / ${me.draws}D`
           : 'No-limit Texas Hold\'em · play money only',
       }),
-      el('div', { class: 'menu-actions' }, quickBtn, privateBtn, boardBtn, replaysBtn),
+      el('div', { class: 'menu-actions' }, quickBtn, privateBtn, boardBtn, replaysBtn, helpBtn),
+      this.helpPanel,
       aiStepper,
       this.inviteSection,
       el('p', { class: 'muted small bold skip-hint', text: 'Click anywhere to skip the intro' }),
@@ -167,6 +181,7 @@ export class MenuScreen {
       }),
       this.errorLine,
     );
+    this._helpBtn = helpBtn;
     // Cinematic 3D casino behind the menu. Loaded dynamically so the node
     // test-suite (and any WebGL-less browser) never has to resolve 'three'.
     this.destroyed = false;
@@ -262,6 +277,12 @@ export class MenuScreen {
     } finally {
       this.busy = false;
     }
+  }
+
+  toggleHelp() {
+    const open = this.helpPanel.hidden;
+    this.helpPanel.hidden = !open;
+    if (this._helpBtn) this._helpBtn.setAttribute('aria-expanded', String(open));
   }
 
   destroy() {

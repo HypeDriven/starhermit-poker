@@ -70,6 +70,16 @@ button.big { padding: 0.9rem 1.6rem; font-size: 1.1rem; }
   filter: drop-shadow(0 0 18px rgba(232, 198, 106, 0.35))
     drop-shadow(0 4px 14px rgba(0, 0, 0, 0.8)); }
 .main-menu.cinematic .muted { text-shadow: 0 2px 10px #000; }
+/* guidance text gets an opaque backing over the animated casino so it stays
+   readable on phones; the muted tone is lifted for contrast */
+.main-menu.cinematic p.muted { color: #d6dfec; background: rgba(6, 10, 18, 0.72); padding: .35rem .8rem;
+  border-radius: 10px; max-width: min(92vw, 42rem); backdrop-filter: blur(6px); }
+.main-menu.cinematic .help-panel { background: rgba(6, 10, 18, 0.9); border: 1px solid var(--line); border-radius: 12px;
+  padding: .8rem 1.1rem; max-width: min(92vw, 40rem); text-align: left; margin-top: .5rem; color: #e7edf6; font-size: .9rem; }
+.main-menu.cinematic .help-panel h2 { margin: 0 0 .4rem; font-size: 1.1rem; }
+.main-menu.cinematic .help-panel h3 { margin: .6rem 0 .3rem; font-size: .95rem; }
+.main-menu.cinematic .help-panel ol { margin: 0; padding-left: 1.3rem; }
+.main-menu.cinematic .help-panel[hidden] { display: none; }
 .main-menu.cinematic .menu-actions { justify-content: center; margin: 1.2rem 0 0.4rem; }
 .main-menu.cinematic button { background: linear-gradient(180deg,
   rgba(37, 51, 72, 0.72), rgba(18, 26, 40, 0.72));
@@ -148,6 +158,9 @@ button.seat { font: inherit; color: inherit; text-align: left; width: 100%; }
 .table-status { text-align: center; text-transform: uppercase; letter-spacing: .18em;
   font-size: .69rem; min-height: 1rem; color: #9dabbe; }
 .table-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; min-height: 310px;
+  /* height budget: the table always leaves room for the status line and the
+     action bar inside the viewport (the 3D view refits to the wider box) */
+  max-height: calc(100dvh - 190px);
   overflow: hidden; border-radius: 22px; isolation: isolate; background:
   radial-gradient(ellipse at 50% 35%, #182942 0, #090d16 56%, #05070c 100%);
   border: 1px solid rgba(145, 174, 213, .14); box-shadow: 0 24px 70px rgba(0,0,0,.52),
@@ -157,8 +170,8 @@ button.seat { font: inherit; color: inherit; text-align: left; width: 100%; }
 .gl-stage { position: absolute; inset: 0; z-index: 0; }
 .gl-stage canvas { width: 100%; height: 100%; display: block; }
 .seat-overlay { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
-.table-center { position: absolute; z-index: 4; left: 50%; top: 43%; transform: translate(-50%, -50%);
-  text-align: center; pointer-events: none; }
+.table-center { position: absolute; z-index: 4; left: 50%; top: 27%; transform: translate(-50%, -50%);
+  text-align: center; pointer-events: none; } /* pot row sits above the community cards, never on their faces */
 .pot-display { display: inline-block; padding: .28rem .65rem; border: 1px solid rgba(222,187,98,.3);
   border-radius: 99px; background: rgba(5,13,17,.72); backdrop-filter: blur(6px); color: #ffe19a;
   font-size: .79rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
@@ -185,7 +198,8 @@ button.seat { font: inherit; color: inherit; text-align: left; width: 100%; }
 
 .action-bar { display: grid; grid-template-columns: minmax(290px, .9fr) minmax(330px, 1.1fr); gap: .7rem;
   background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: .7rem;
-  backdrop-filter: blur(16px); box-shadow: 0 12px 35px #0005, inset 0 1px rgba(255,255,255,.035); }
+  backdrop-filter: blur(16px); box-shadow: 0 12px 35px #0005, inset 0 1px rgba(255,255,255,.035);
+  position: sticky; bottom: .4rem; z-index: 5; }
 .action-buttons { display: flex; gap: .5rem; }
 .action-buttons button { flex: 1 1 5rem; min-height: 2.65rem; }
 .action-buttons button:first-child { color: #ff9c9a; }
@@ -268,11 +282,21 @@ button.preset { flex: 1; padding: .24rem .4rem; border-radius: 7px; font-size: .
 
 @media (max-width: 760px) {
   .table-screen { padding: .35rem; }
-  .table-stage { aspect-ratio: 4 / 4.7; border-radius: 14px; min-height: 390px; }
+  .table-stage { aspect-ratio: 4 / 4.7; border-radius: 14px; min-height: 390px; max-height: calc(100dvh - 240px); }
   .action-bar { grid-template-columns: 1fr; }
   .seat-panel { min-width: 4.2rem; max-width: 5.8rem; font-size: .65rem; padding: .24rem .36rem; }
   .seat-flags { max-width: 5rem; white-space: nowrap; overflow: hidden; }
-  .table-center { top: 45%; }
+  .table-center { top: 31%; }
+}
+/* short landscape phones: compact status, table height-bound, feed/chat collapsed */
+@media (max-height: 500px) and (orientation: landscape) {
+  .table-screen { padding: .3rem; gap: .35rem; }
+  .table-status { font-size: .6rem; min-height: .8rem; }
+  .table-stage { min-height: 0; max-height: calc(100dvh - 130px); border-radius: 12px; }
+  .action-bar { padding: .35rem; gap: .35rem; bottom: .2rem; }
+  .action-buttons button { min-height: 2.2rem; }
+  .event-feed, .chat-panel, .voice-panel { display: none; }
+  .table-center { top: 24%; }
 }
 
 @media (max-width: 420px) {

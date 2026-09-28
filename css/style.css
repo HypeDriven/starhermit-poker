@@ -305,3 +305,55 @@ button.preset { flex: 1; padding: .24rem .4rem; border-radius: 7px; font-size: .
   .action-buttons button { min-height: 2.35rem; }
   button.preset { font-size: .63rem; padding-inline: .15rem; }
 }
+
+/* ---- Settings button + Graphics panel ---- */
+.settings-btn { display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap; }
+.settings-icon { font-size: 1.05em; line-height: 1; }
+.settings-btn.compact { padding: .22rem .6rem; font-size: .74rem; border-radius: 99px; }
+.table-topbar { position: relative; display: flex; align-items: center; justify-content: center;
+  min-height: 1.9rem; }
+.table-topbar .settings-btn { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
+.table-topbar .settings-btn:hover:not(:disabled) { transform: translateY(calc(-50% - 1px)); }
+@media (max-width: 560px) {
+  .table-topbar .settings-label { display: none; }
+  .table-topbar .table-status { padding-right: 2.6rem; }
+}
+.settings-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center;
+  justify-content: center; padding: max(.75rem, env(safe-area-inset-top)) .75rem;
+  background: rgba(3, 6, 12, .62); backdrop-filter: blur(4px); }
+.settings-panel { width: min(31rem, 100%); max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
+  background: linear-gradient(160deg, rgba(24, 34, 50, .98), rgba(9, 14, 23, .98));
+  border: 1px solid rgba(148, 176, 211, .3); border-radius: 16px; padding: .9rem 1.1rem 1rem;
+  box-shadow: 0 30px 80px #000c, inset 0 1px rgba(255,255,255,.06); color: var(--fg); }
+.settings-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.settings-head h2 { margin: 0; font-family: Georgia, serif; font-weight: 500; font-size: 1.35rem; color: #fff6da; }
+.gfx-close { padding: .3rem .65rem; }
+.settings-section h3 { margin: .7rem 0 .35rem; font-size: .78rem; text-transform: uppercase;
+  letter-spacing: .16em; color: var(--gold); }
+.gfx-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+  padding: .38rem 0; border-bottom: 1px solid rgba(148, 167, 196, .12); font-size: .88rem; }
+.gfx-label { flex: 1 1 auto; min-width: 0; }
+.gfx-row select { flex: 0 1 12.5rem; min-width: 0; max-width: 58%; background: #16202f; color: var(--fg);
+  border: 1px solid #2f4260; border-radius: 8px; padding: .34rem .45rem; font: inherit; font-size: .84rem; }
+.gfx-row select:focus-visible, .gfx-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gfx-scale { display: flex; align-items: center; gap: .5rem; flex: 0 1 12.5rem; min-width: 0; }
+.gfx-scale input { flex: 1; min-width: 0; accent-color: #e4bd5e; }
+.gfx-scale-value { min-width: 3rem; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;
+  color: #ffe096; font-weight: 700; }
+.gfx-check input { width: 1.2rem; height: 1.2rem; accent-color: #e4bd5e; }
+.gfx-summary { margin: .7rem 0 0; font-size: .76rem; color: #aeb9c9; overflow-wrap: anywhere; }
+.gfx-note { margin: .4rem 0 0; font-size: .78rem; color: #ffcf7a; }
+#fps-meter { position: fixed; left: .5rem; bottom: .5rem; z-index: 60; pointer-events: none;
+  padding: .15rem .45rem; border-radius: 6px; background: rgba(0, 0, 0, .6); color: #9ff5c8;
+  font: 600 .72rem ui-monospace, monospace; }
+
+/* 3D table present: the board is drawn on the felt, not in the DOM row. */
+.table-stage.has-3d .board-cards { display: none; }
+
+/* Detail: Detailed — DOM cards (text-mode table, replays) get card stock. */
+body[data-gfx-detail="detailed"] .pcard { background: linear-gradient(170deg, #fffdf8, #ece6da);
+  box-shadow: 0 1px 0 #fff inset, 0 2px 6px rgba(0,0,0,.35); border: 1px solid #d8d0c0; }
+@media (max-width: 420px) {
+  .settings-panel { padding-inline: .8rem; }
+  .gfx-row select { max-width: 64%; font-size: .78rem; padding-inline: .3rem; }
+}

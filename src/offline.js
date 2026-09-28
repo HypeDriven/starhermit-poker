@@ -8,6 +8,7 @@
 import { GAME } from './config.js';
 import { seatVisual, seatUnit, presetTotal, describeLogEntry } from './table-utils.js';
 import { cardEl, describeHandComplete } from './table.js';
+import { settingsButton, closeSettings } from './graphics-panel.js';
 
 const USER_ID = 'local-player';
 const AI_NAMES = ['Ada', 'Ben', 'Cleo', 'Dex', 'Eva'];
@@ -42,7 +43,17 @@ export class LocalMenuScreen {
   show() {
     const { root } = this.ctx;
     root.textContent = '';
-    root.append(el('div', { class: 'screen main-menu' },
+    this.destroyed = false;
+    // Cinematic 3D casino behind the menu (same scene as the platform menu).
+    // Loaded dynamically; without WebGL or the CDN the CSS backdrop remains.
+    const stage = el('div', { class: 'menu3d-stage' });
+    root.append(stage);
+    import('./menu3d.js').then(({ MenuScene3D }) => {
+      if (this.destroyed) return;
+      this.scene3d = new MenuScene3D(stage);
+      if (this.scene3d.failed) this.scene3d = null;
+    }).catch(() => { /* no 3D: the CSS background carries the menu */ });
+    root.append(el('div', { class: 'screen main-menu cinematic' },
       el('h1', { text: 'StarHermit Poker' }),
       el('p', {
         class: 'muted',
@@ -58,6 +69,7 @@ export class LocalMenuScreen {
           type: 'button', text: 'Multiplayer sign-in',
           onclick: () => this.ctx.onShowSignIn(),
         }),
+        settingsButton(),
       ),
       el('p', {
         class: 'muted small',
@@ -67,7 +79,14 @@ export class LocalMenuScreen {
     ));
   }
 
-  destroy() { /* no timers or sockets */ }
+  destroy() {
+    this.destroyed = true;
+    closeSettings();
+    if (this.scene3d) {
+      this.scene3d.destroy();
+      this.scene3d = null;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -197,9 +216,10 @@ export class LocalTableScreen {
     this.feed = el('div', { class: 'event-feed', 'aria-live': 'polite' });
     this.errorLine = el('p', { class: 'error', hidden: '', role: 'alert' });
     this.seatOverlay = el('div', { class: 'seat-overlay' });
+    this.glContainer = el('div', { class: 'gl-stage' });
 
     const stage = el('div', { class: 'table-stage game-board' },
-      this.seatOverlay, this.centerInfo);
+      this.glContainer, this.seatOverlay, this.centerInfo);
 
     this.foldBtn = el('button', { type: 'button', text: 'Fold', onclick: () => this.act('fold') });
     this.checkCallBtn = el('button', { type: 'button', onclick: () => this.actCheckCall() });
@@ -227,8 +247,20 @@ export class LocalTableScreen {
     });
 
     this.screen = el('div', { class: 'table-screen' },
-      this.statusLine, stage, actionBar, this.feed, this.errorLine, leaveBtn);
+      el('div', { class: 'table-topbar' }, this.statusLine, settingsButton('compact')),
+      stage, actionBar, this.feed, this.errorLine, leaveBtn);
     root.append(this.screen);
+
+    // The 3D table (same renderer as online play). Optional: without WebGL
+    // or the three.js CDN the DOM table below is the whole game.
+    import('./table3d.js').then(({ TableRenderer }) => {
+      if (this.destroyed) return;
+      try {
+        this.renderer3d = new TableRenderer(this.glContainer);
+        stage.classList.add('has-3d');
+        this.render();
+      } catch { this.renderer3d = null; }
+    }).catch(() => { /* text-mode table */ });
 
     this.timerInterval = setInterval(() => this.renderTimer(), 250);
     // 1 Hz sweep, matching the script's declared tickRateHz: enforces turn
@@ -320,6 +352,8 @@ export class LocalTableScreen {
         this.seatOverlay.append(seatEl);
       }
     }
+
+    if (this.renderer3d && pub) this.renderer3d.update(pub, you);
 
     this.renderActionBar();
     this.renderTimer();
@@ -415,7 +449,12 @@ export class LocalTableScreen {
 
   destroy() {
     this.destroyed = true;
+    closeSettings();
     if (this.timerInterval) clearInterval(this.timerInterval);
     if (this.tickInterval) clearInterval(this.tickInterval);
+    if (this.renderer3d) {
+      this.renderer3d.dispose();
+      this.renderer3d = null;
+    }
   }
 }

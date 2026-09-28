@@ -9,14 +9,17 @@
  *   runs to its Winner + "New match" end screen.
  * A second pass runs the load → Play → a few real touch moves flow on a
  *   mobile touch viewport.
+ * A graphics pass (desktop + mobile) opens Settings → Graphics from the menu
+ *   and from the table, switches presets and an override through the real
+ *   controls, checks they apply (<body data-gfx-preset>) and survive a reload.
  *
  * Serving: the repo ships `server.js` (the StarHermit authoritative script
  * declared by starhermit.txt). The game is fully playable offline — when no
  * `#game_token` launch happens the client lands on a local menu whose
  * "Play" opens a browser-hosted table driven by `globalThis.game` (server.js
- * loaded as a classic script) with no network and no sign-in. menu3d.js /
- * table3d.js (the only three.js consumers) are dynamically imported only by
- * the online lobby/table, so the offline path never fetches the CDN. So, per
+ * loaded as a classic script) with no sign-in. menu3d.js / table3d.js (the
+ * three.js consumers) are imported dynamically; they load three.js from the
+ * CDN and the game stays playable in DOM mode if that fails. So, per
  * the sibling conventions, this test embeds a minimal node:http static server
  * on an ephemeral port and answers /api/* probes with 200 `{}` so any
  * background platform probe degrades silently. It does NOT need to spawn
@@ -181,7 +184,7 @@ async function runPass(browser, name, ctxOpts, { full }) {
   const page = await context.newPage();
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
-    if (m.type() !== 'error' || browserNoise.test(m.text())) return;
+    if (!['error', 'warning'].includes(m.type()) || browserNoise.test(m.text())) return;
     const url = m.location()?.url || '';
     if (/Failed to load resource/.test(m.text()) && /\/api\/|\/favicon/.test(url)) return;
     errors.push(`console: ${m.text()}`);
@@ -281,6 +284,101 @@ async function runPass(browser, name, ctxOpts, { full }) {
   console.log(`ok - ${name}: no page errors`);
 }
 
+// ---------- graphics settings pass ----------
+async function runGraphicsPass(browser, name, ctxOpts, { touch }) {
+  const errors = [];
+  const context = await browser.newContext(ctxOpts);
+  const page = await context.newPage();
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    if (!['error', 'warning'].includes(m.type()) || browserNoise.test(m.text())) return;
+    errors.push(`console ${m.type()}: ${m.text()}`);
+  });
+  const press = async (loc) => {
+    if (touch) {
+      const bb = await loc.boundingBox();
+      await page.touchscreen.tap(bb.x + bb.width / 2, bb.y + bb.height / 2);
+    } else await loc.click();
+  };
+  const preset = () => page.evaluate(() => document.body.dataset.gfxPreset);
+  const vp = ctxOpts.viewport;
+  const panelFits = async () => {
+    const bb = await page.locator('#settings-panel').boundingBox();
+    if (!bb || bb.x < 0 || bb.y < 0 || bb.x + bb.width > vp.width + 1 || bb.y + bb.height > vp.height + 1) {
+      throw new Error(`${name}: settings panel does not fit the viewport (${JSON.stringify(bb)})`);
+    }
+  };
+  try {
+    await page.goto(BASE, { waitUntil: 'load' });
+    await page.waitForSelector('.main-menu [data-action="open-settings"]', { timeout: 15000 });
+    // Headless Chrome renders with SwiftShader, so Auto resolves to Low.
+    if (await preset() !== 'low') throw new Error(`auto preset is "${await preset()}", expected low`);
+    ok(`${name}: Auto quality resolved to Low on the software GPU`);
+
+    await press(page.locator('.main-menu [data-action="open-settings"]'));
+    await page.waitForSelector('#settings-panel', { timeout: 5000 });
+    await panelFits();
+    const autoLabel = await page.locator('#gfx-preset option[value="auto"]').textContent();
+    if (!/Low/.test(autoLabel)) throw new Error(`auto option label "${autoLabel}"`);
+    await page.selectOption('#gfx-preset', 'low');
+    if (await preset() !== 'low') throw new Error('Low preset not applied');
+    await page.selectOption('#gfx-preset', 'high');
+    await page.waitForFunction(() => document.body.dataset.gfxPreset === 'high');
+    await page.selectOption('#gfx-cat-bloom', 'off');
+    await page.locator('#gfx-fps').check();
+    await page.waitForSelector('#fps-meter');
+    const summary = await page.textContent('#gfx-summary');
+    if (!/shadows/.test(summary) || /bloom/.test(summary) || !/\d+×\d+ px/.test(summary)) {
+      throw new Error(`unexpected summary "${summary}"`);
+    }
+    await page.screenshot({ path: SHOT('gfx-panel', name) });
+    ok(`${name}: menu Settings → Graphics switched Low → High, Bloom override off ("${summary.trim()}")`);
+    await press(page.locator('#settings-panel [data-action="close-settings"]'));
+    await page.waitForSelector('#settings-panel', { state: 'detached' });
+
+    // Persisted across a reload.
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('.main-menu [data-action="open-settings"]');
+    if (await preset() !== 'high') throw new Error('High preset did not survive the reload');
+    await press(page.locator('.main-menu [data-action="open-settings"]'));
+    await page.waitForSelector('#settings-panel');
+    const kept = await page.evaluate(() => [
+      document.getElementById('gfx-preset').value,
+      document.getElementById('gfx-cat-bloom').value,
+      document.getElementById('gfx-fps').checked,
+    ]);
+    if (kept.join() !== 'high,off,true') throw new Error(`settings after reload: ${kept}`);
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('#settings-panel', { state: 'detached' });
+    ok(`${name}: preset + override survive reload; Escape closes the panel`);
+
+    // In game: the 3D table honours the settings live.
+    await press(page.locator('.menu-actions button.primary'));
+    await page.waitForSelector('.table-stage.has-3d canvas', { timeout: 20000 });
+    await page.waitForTimeout(1500);
+    const tableBtn = page.locator('.table-screen [data-action="open-settings"]');
+    if (touch) await press(tableBtn);
+    else { await tableBtn.focus(); await page.keyboard.press('Enter'); }
+    await page.waitForSelector('#settings-panel');
+    await panelFits();
+    await page.selectOption('#gfx-preset', 'ultra');
+    await page.waitForTimeout(1500);
+    await page.screenshot({ path: SHOT('gfx-ultra', name) });
+    await page.selectOption('#gfx-cat-ao', 'off');
+    await page.selectOption('#gfx-preset', 'low');
+    await page.waitForFunction(() => document.body.dataset.gfxPreset === 'low'
+      && document.getElementById('gfx-cat-ao').value === 'preset');
+    await page.waitForTimeout(1000);
+    await press(page.locator('#settings-panel [data-action="close-settings"]'));
+    await page.screenshot({ path: SHOT('gfx-low-table', name) });
+    ok(`${name}: in-game Settings switched Ultra → Low live (overrides cleared by the preset)`);
+  } finally {
+    await context.close();
+  }
+  if (errors.length) throw new Error(`${name} graphics pass had page errors:\n  ${errors.join('\n  ')}`);
+  console.log(`ok - ${name}: graphics pass, no console errors or warnings`);
+}
+
 // ---------- main ----------
 let browser = null;
 try {
@@ -292,6 +390,9 @@ try {
   await runPass(browser, 'desktop', { viewport: { width: 1280, height: 800 } }, { full: true });
   await runPass(browser, 'mobile',
     { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }, { full: false });
+  await runGraphicsPass(browser, 'desktop', { viewport: { width: 1280, height: 800 } }, { touch: false });
+  await runGraphicsPass(browser, 'mobile',
+    { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }, { touch: true });
   console.log('\nE2E PASS — poker, desktop + mobile, no page errors');
 } catch (e) {
   failures++;

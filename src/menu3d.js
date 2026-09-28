@@ -13,11 +13,8 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GfxPipeline } from './gfx-pipeline.js';
 import {
   SHELL, makeDriftState, stepDrift, mulberry32, easeInOutCubic, clamp01,
 } from './menu3d-physics.js';
@@ -295,21 +292,6 @@ export class MenuScene3D {
     this.flyT = REDUCED ? 1 : 0;
     this.idleAngle = Math.PI * 0.15;
 
-    try {
-      // Everything is composited through the bloom chain, so MSAA on the
-      // default framebuffer only buys a wasted full-screen buffer — memory
-      // mobile GPUs would rather spend on not dropping the context.
-      this.renderer = new THREE.WebGLRenderer({ antialias: !MOBILE, alpha: false });
-    } catch {
-      this.failed = true;
-      return;
-    }
-    const r = this.renderer;
-    r.setPixelRatio(Math.min(devicePixelRatio || 1, MOBILE ? 1.5 : 2));
-    r.toneMapping = THREE.ACESFilmicToneMapping;
-    r.toneMappingExposure = 1.0;
-    container.appendChild(r.domElement);
-
     // Mobile GPUs drop the context under memory pressure. three.js already
     // preventDefaults the event (so the browser will try to restore) and
     // no-ops its own draws, but the composer keeps spinning a render loop
@@ -324,14 +306,13 @@ export class MenuScene3D {
       this.contextLost = false;
       if (!this.destroyed) this.loop();
     };
-    r.domElement.addEventListener('webglcontextlost', this.onContextLost);
-    r.domElement.addEventListener('webglcontextrestored', this.onContextRestored);
 
     this.scene = new THREE.Scene();
     // Tight near/far keeps depth precision high — mobile GPUs often have
     // 16-bit depth buffers, and the inlay rings are nearly coplanar.
     this.camera = new THREE.PerspectiveCamera(55, 1, 0.5, 240);
     this.camera.position.set(0, 5.5, 30);
+    this.clock = new THREE.Clock();
 
     this.buildLighting();
     this.buildSky();
@@ -342,12 +323,36 @@ export class MenuScene3D {
     this.buildFlightPath();
     this.loadCasino();
 
-    this.composer = new EffectComposer(r);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.composer.addPass(new ShaderPass(SANITIZE_SHADER)); // before the blur
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.45, 0.4, 0.85);
-    this.composer.addPass(this.bloom);
-    this.composer.addPass(new OutputPass());
+    // Rendering goes through the shared quality pipeline. The menu honours
+    // render scale, anti-aliasing, bloom and grade, plus particles/background.
+    try {
+      this.pipeline = new GfxPipeline({
+        container,
+        scene: this.scene,
+        camera: this.camera,
+        subset: ['antialias', 'bloom', 'grade'],
+        bloom: { strength: 0.45, radius: 0.4, threshold: 0.85 },
+        // Scrub non-finite pixels before the bloom blur (see SANITIZE_SHADER).
+        prePasses: () => [new ShaderPass(SANITIZE_SHADER)],
+        configure: (r) => {
+          r.toneMapping = THREE.ACESFilmicToneMapping;
+          r.toneMappingExposure = 1.0;
+        },
+        onRenderer: (r) => {
+          if (this.canvas) {
+            this.canvas.removeEventListener('webglcontextlost', this.onContextLost);
+            this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
+          }
+          this.canvas = r.domElement;
+          this.canvas.addEventListener('webglcontextlost', this.onContextLost);
+          this.canvas.addEventListener('webglcontextrestored', this.onContextRestored);
+        },
+        onApply: (q) => this.applyGraphics(q),
+      });
+    } catch {
+      this.failed = true;
+      return;
+    }
 
     // Debounced: mobile URL-bar show/hide fires a stream of resizes, and
     // small height-only changes aren't worth a re-layout flicker.
@@ -378,7 +383,6 @@ export class MenuScene3D {
       addEventListener('keydown', this.onSkip);
     }
 
-    this.clock = new THREE.Clock();
     this.loop = () => {
       if (this.destroyed) return;
       this.raf = requestAnimationFrame(this.loop);
@@ -450,13 +454,14 @@ export class MenuScene3D {
 
   // Holographic rings rotating above the felt.
   buildHoloBands() {
-    this.holoU = [];
+    this.holoBag = new Set();
     const mk = (radius, y, h, color, speed) => {
       const geo = this.track(new THREE.CylinderGeometry(radius, radius, h, 64, 1, true));
       const u = this.uniformBag({
         uTime: { value: 0 },
         uColor: { value: new THREE.Color(color) },
       });
+      this.holoBag.add(u);
       const mat = this.track(new THREE.ShaderMaterial({
         vertexShader: BEAM_VERT,
         fragmentShader: HOLO_FRAG,
@@ -503,7 +508,8 @@ export class MenuScene3D {
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     }));
-    this.scene.add(new THREE.Points(geo, mat));
+    this.dust = new THREE.Points(geo, mat);
+    this.scene.add(this.dust);
   }
 
   // The zero-g card cloud over the table.
@@ -624,7 +630,7 @@ export class MenuScene3D {
       this.scene.add(root);
     }, undefined, (err) => {
       // No GLB (e.g. opened from file://): keep sky/cards — still a menu.
-      console.warn('menu3d: casino.glb failed to load', err);
+      this.glbError = err;
     });
   }
 
@@ -632,8 +638,11 @@ export class MenuScene3D {
 
   tick(dt) {
     const t = this.clock.elapsedTime;
+    // Background: Static (or reduced motion) freezes the nebula, beam and
+    // holo bands; the cards and set dressing keep their gentle drift.
+    const bgTime = this.animatedBg ? t : 0;
     for (const u of this.uniforms) {
-      if (u.uTime) u.uTime.value = t;
+      if (u.uTime) u.uTime.value = u === this.skyU || u === this.beamU || this.holoBag.has(u) ? bgTime : t;
     }
 
     // Zero-g card drift + tumble.
@@ -659,33 +668,27 @@ export class MenuScene3D {
       this.star.scale.set(p, p, p);
       this.star.rotation.y += dt * 0.4;
     }
-    for (const b of this.bands || []) b.rotation.y += dt * b.userData.speed;
+    if (this.animatedBg) for (const b of this.bands || []) b.rotation.y += dt * b.userData.speed;
     for (const n of this.neonMats) {
       n.mat.emissiveIntensity = n.base * (0.82 + 0.18 * Math.sin(t * 1.3 + n.phase));
     }
 
     this.updateCamera(dt);
-    this.render();
+    this.render(dt);
   }
 
-  render() {
-    if (!this.plainRender) {
-      try {
-        this.composer.render();
-        return;
-      } catch (err) {
-        // Some GPUs can't handle the bloom chain's float buffers. Latch the
-        // fallback rather than retrying every frame: a composer that fails
-        // only intermittently alternates pipelines, which reads as flicker.
-        this.plainRender = true;
-        console.warn('menu3d: bloom pipeline failed, falling back', err);
-      }
-    }
+  applyGraphics(q) {
+    this.animatedBg = q.background === 'animated' && !REDUCED;
+    const high = q.particles === 'high';
+    if (this.dust) this.dust.geometry.setDrawRange(0, high ? 700 : 260);
+    this.cards.forEach((c, i) => { c.visible = high || i % 2 === 0; });
+  }
+
+  render(dt) {
     try {
-      this.renderer.render(this.scene, this.camera);
-    } catch (e) {
+      this.pipeline.render(dt * 1000);
+    } catch {
       // If even a plain render fails, give the stage back to CSS.
-      console.warn('menu3d: renderer failed', e);
       this.destroy();
     }
   }
@@ -717,8 +720,6 @@ export class MenuScene3D {
     const h = this.container.clientHeight || innerHeight;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(w, h);
-    this.composer.setSize(w, h);
   }
 
   destroy() {
@@ -742,12 +743,11 @@ export class MenuScene3D {
         }
       }
     });
-    if (this.bloom) this.bloom.dispose();
-    const canvas = this.renderer.domElement;
-    canvas.removeEventListener('webglcontextlost', this.onContextLost);
-    canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
-    this.renderer.dispose();
-    canvas.remove();
+    if (this.canvas) {
+      this.canvas.removeEventListener('webglcontextlost', this.onContextLost);
+      this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
+    }
+    this.pipeline.dispose();
     this.container.classList.add('menu3d-stage--off');
   }
 }

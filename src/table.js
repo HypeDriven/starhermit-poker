@@ -10,6 +10,7 @@ import { seatVisual, seatUnit, presetTotal, describeLogEntry } from './table-uti
 import { ChatPanel } from './chat.js';
 import { VoiceController } from './voice.js';
 import { SoundFX } from './sounds.js';
+import { settingsButton, closeSettings } from './graphics-panel.js';
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -250,7 +251,7 @@ export class TableScreen {
     this.glContainer = el('div', { class: 'gl-stage' });
     this.seatOverlay = el('div', { class: 'seat-overlay' });
 
-    const stage = el('div', { class: 'table-stage' },
+    const stage = el('div', { class: 'table-stage has-3d' },
       this.glContainer, this.seatOverlay, this.centerInfo);
 
     // Action bar.
@@ -314,7 +315,7 @@ export class TableScreen {
     root.addEventListener('pointerdown', this._unlockSound);
 
     this.screen = el('div', { class: 'table-screen' },
-      this.statusLine, stage, actionBar, this.voicePanel, this.chatContainer,
+      el('div', { class: 'table-topbar' }, this.statusLine, settingsButton('compact')), stage, actionBar, this.voicePanel, this.chatContainer,
       this.feed, this.errorLine, leaveBtn);
     root.append(this.screen);
 
@@ -525,6 +526,7 @@ export class TableScreen {
 
   destroy() {
     this.destroyed = true;
+    closeSettings();
     this.ctx.net.profiles.removeListener(this._profileListener);
     if (this._unlockSound) this.ctx.root.removeEventListener('pointerdown', this._unlockSound);
     if (this.timerInterval) clearInterval(this.timerInterval);

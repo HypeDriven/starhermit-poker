@@ -23,6 +23,7 @@ import { LeaderboardScreen } from './leaderboard.js';
 import { ReplayListScreen, ReplayScreen } from './replays.js';
 import { sharedProfiles } from './profiles.js';
 import { LocalMenuScreen, LocalTableScreen } from './offline.js';
+import { graphics } from './gfx-settings.js';
 
 const bootScreen = () => document.getElementById('screen-boot');
 const screenRoot = () => document.getElementById('screen-root');
@@ -185,6 +186,8 @@ function makeLocalCtx() {
 }
 
 function boot() {
+  // Graphics settings: <body data-gfx-*> hooks and the optional FPS readout.
+  graphics.applyPage();
   const { token, sessionId } = captureLaunchCredentials();
 
   if (token) {

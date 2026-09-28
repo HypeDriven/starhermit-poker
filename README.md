@@ -69,7 +69,7 @@ table's match and nothing else.
 Tests and checks:
 
 ```bash
-npm test          # node --test tests/*.test.js (176 tests, zero dependencies)
+npm test          # node --test tests/*.test.js (186 tests, zero dependencies)
 npm run test:e2e  # headless-Chrome playthrough of the offline table (dev only)
 node --check server.js && for f in src/*.js; do node --check "$f"; done
 ```

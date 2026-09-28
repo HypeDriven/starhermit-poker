@@ -5,6 +5,7 @@
 import { GAME } from './config.js';
 import { ApiError } from './net.js';
 import { RoomController, seatMap, seatCountOf, canStart, isHost } from './realtime-room.js';
+import { settingsButton, closeSettings } from './graphics-panel.js';
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -167,7 +168,7 @@ export class MenuScreen {
           ? `Elo ${me.elo} · ${me.wins}W / ${me.losses}L / ${me.draws}D`
           : 'No-limit Texas Hold\'em · play money only',
       }),
-      el('div', { class: 'menu-actions' }, quickBtn, privateBtn, boardBtn, replaysBtn, helpBtn),
+      el('div', { class: 'menu-actions' }, quickBtn, privateBtn, boardBtn, replaysBtn, helpBtn, settingsButton()),
       this.helpPanel,
       aiStepper,
       this.inviteSection,
@@ -192,9 +193,8 @@ export class MenuScreen {
       if (this.destroyed) return;
       this.scene3d = new MenuScene3D(stage);
       if (this.scene3d.failed) this.scene3d = null;
-    }).catch((err) => {
+    }).catch(() => {
       // No WebGL or CDN — the CSS background carries the menu.
-      console.warn('menu3d: 3D menu unavailable', err);
     });
 
     root.append(this.menu);
@@ -288,6 +288,7 @@ export class MenuScreen {
   destroy() {
     this.busy = false;
     this.destroyed = true;
+    closeSettings();
     removeEventListener('pointerdown', this.dropHint);
     clearTimeout(this.hintTimer);
     if (this.scene3d) {

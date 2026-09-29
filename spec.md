@@ -65,3 +65,7 @@ de-DE, fr-FR, fr-CA, pt-BR and it-IT (from the browser language).
 | `src/graphics-panel.js` | Settings button and the Settings → Graphics panel |
 | `src/gfx-i18n.js` | Graphics panel strings for the nine supported locales |
 | `tests/gfx.test.js` | Unit tests for the quality model and panel strings |
+
+## Browser interference
+
+`browser-guard.js` (loaded from `index.html`) suppresses browser UI that gets in the way of play: the right-click context menu, the iOS long-press callout, copy / cut / paste, and page text selection. Text fields (inputs, textareas, selects, contenteditable) keep normal selection, context menu and clipboard behaviour.

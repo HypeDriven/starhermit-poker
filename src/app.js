@@ -1,8 +1,9 @@
 // StarHermit Poker — application entry point and boot flow.
 //
 // Boot order:
-//   1. Production launch: #game_token=<jwt> in the URL hash (captured and
-//      stripped exactly once by net.js). No auth UI is ever shown.
+//   1. Production launch: #game_token=<jwt> (or a sign-in return's
+//      #access_token) read and stripped by the StarHermit SDK, which also
+//      renews it. No auth UI is ever shown.
 //   2. Local development: reuse the launch token cached in sessionStorage by
 //      the auth panel, or show the panel to mint one.
 //   3. Probe GET /api/v1/games/{scope} — validates the token and loads game
@@ -14,7 +15,9 @@
 // sockets and must release them in destroy().
 
 import { GAME } from './config.js';
-import { captureLaunchCredentials, createNetContext } from './net.js';
+import { captureLaunchCredentials, createNetContext, starhermit } from './net.js';
+import { loadPlatformPrefs } from './platform-prefs.js';
+import { currentPlatformStrings } from './platform-i18n.js';
 import { showAuthPanel, clearDevToken } from './auth-panel.js';
 import { RoomController } from './realtime-room.js';
 import { MenuScreen, LobbyScreen } from './lobby.js';
@@ -135,18 +138,17 @@ async function enterApp(net, gameInfo, { production, deepLinkSessionId }) {
 
 async function bootWithToken(token, apiBase, { production, deepLinkSessionId }) {
   const net = createNetContext({ token, apiBase });
-  net.profiles = sharedProfiles(net.client, { getToken: () => net.tokenManager.token });
+  net.profiles = sharedProfiles(net.client);
   window.addEventListener('pagehide', () => {
     if (currentScreen && currentScreen.destroy) currentScreen.destroy();
-    net.tokenManager.destroy();
   });
 
   setBootStatus('Checking session…');
   try {
     const gameInfo = await net.client.get(`/api/v1/games/${net.scope}`);
+    await loadPlatformPrefs(net.sdk);
     await enterApp(net, gameInfo, { production, deepLinkSessionId });
   } catch (e) {
-    net.tokenManager.destroy();
     if (production) {
       showFatal(
         'The platform rejected the launch token. Relaunch the game from StarHermit ' +
@@ -168,8 +170,12 @@ async function bootWithToken(token, apiBase, { production, deepLinkSessionId }) 
 // Local (no platform launch) screens: offline table vs AI, with the dev
 // sign-in panel behind a secondary option for multiplayer development.
 function makeLocalCtx() {
+  const sh = starhermit();
   return {
     root: screenRoot(),
+    // "Sign in with StarHermit": only on <id>.starhermit.com without a token.
+    canSignIn: () => !!(sh && sh.canSignIn()),
+    onSignIn: () => sh && sh.signIn(),
     onPlayOffline: () => switchScreen(new LocalTableScreen(makeLocalCtx())),
     onRematch: () => switchScreen(new LocalTableScreen(makeLocalCtx())),
     onExitToMenu: () => switchScreen(new LocalMenuScreen(makeLocalCtx())),
@@ -185,10 +191,22 @@ function makeLocalCtx() {
   };
 }
 
+// The SDK signs out when token renewal is refused: drop back to the local
+// menu (offline play keeps working; sign-in is offered again where possible).
+function watchSignOut() {
+  const sh = starhermit();
+  if (!sh) return;
+  sh.on('auth', (a) => {
+    if (a.signedIn) return;
+    switchScreen(new LocalMenuScreen({ ...makeLocalCtx(), notice: currentPlatformStrings().signedOut }));
+  });
+}
+
 function boot() {
   // Graphics settings: <body data-gfx-*> hooks and the optional FPS readout.
   graphics.applyPage();
   const { token, sessionId } = captureLaunchCredentials();
+  watchSignOut();
 
   if (token) {
     bootWithToken(token, '', { production: true, deepLinkSessionId: sessionId });

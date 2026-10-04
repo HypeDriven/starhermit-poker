@@ -1,46 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  parseLaunchHash,
-  decodeJwtPayload,
   wsUrl,
   backoffDelay,
 } from '../src/net.js';
 import { loadScript } from './harness.js';
 
-function makeJwt(payload) {
-  const b64url = (obj) =>
-    Buffer.from(JSON.stringify(obj)).toString('base64')
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  return `${b64url({ alg: 'RS256', typ: 'JWT' })}.${b64url(payload)}.sig`;
-}
-
-test('parseLaunchHash extracts game_token and session_id', () => {
-  const { token, sessionId } = parseLaunchHash('#game_token=abc.def.ghi&session_id=room-1');
-  assert.equal(token, 'abc.def.ghi');
-  assert.equal(sessionId, 'room-1');
-});
-
-test('parseLaunchHash tolerates missing parts and no leading #', () => {
-  assert.deepEqual(parseLaunchHash(''), { token: null, sessionId: null });
-  assert.deepEqual(parseLaunchHash('#other=1'), { token: null, sessionId: null });
-  const { token } = parseLaunchHash('game_token=only');
-  assert.equal(token, 'only');
-});
-
-test('decodeJwtPayload reads sub and game_scope', () => {
-  const jwt = makeJwt({ sub: 'user-123', game_scope: 'poker', exp: 999999 });
-  const claims = decodeJwtPayload(jwt);
-  assert.equal(claims.sub, 'user-123');
-  assert.equal(claims.game_scope, 'poker');
-});
-
-test('decodeJwtPayload rejects malformed tokens', () => {
-  assert.equal(decodeJwtPayload('not-a-jwt'), null);
-  assert.equal(decodeJwtPayload('a.b'), null);
-  assert.equal(decodeJwtPayload(null), null);
-  assert.equal(decodeJwtPayload('a.@@not-base64@@.c'), null);
-});
+// Launch-token parsing and claim decoding live in the StarHermit SDK
+// (tests/platform.test.js covers the adapter on top of it).
 
 test('wsUrl follows the page protocol', () => {
   const http = { protocol: 'http:', host: 'localhost:5000' };

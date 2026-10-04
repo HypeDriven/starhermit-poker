@@ -357,3 +357,7 @@ body[data-gfx-detail="detailed"] .pcard { background: linear-gradient(170deg, #f
   .settings-panel { padding-inline: .8rem; }
   .gfx-row select { max-width: 64%; font-size: .78rem; padding-inline: .3rem; }
 }
+
+@media (pointer: coarse) {
+  .bet-presets button, .settings-btn { min-height: 36px; }
+}

@@ -4,11 +4,10 @@
 // https://wiki.starhermit.com/docs/api/realtime.html
 //
 // Rules enforced here:
-// - `#game_token=<jwt>` is read from the URL hash exactly once, then stripped
-//   with history.replaceState. The token lives only in memory afterwards.
-// - The JWT payload is decoded locally ONLY to read non-security UI values
-//   (`sub`, `game_scope`). Decoded claims are never treated as proof of
-//   authorization — the platform validates the token on every call.
+// - The launch token, its renewal, sign-in and claim decoding belong to the
+//   shared StarHermit SDK (starhermit-sdk.js, window.StarHermit), which reads
+//   `#game_token=` / `#access_token=` once and strips it. Decoded claims are
+//   UI values only — the platform validates the token on every call.
 // - All REST paths are same-origin relative; the game slug always comes from
 //   the `game_scope` claim, never from a hard-coded constant.
 // - WebSocket scheme follows the page protocol (ws: for http:, wss: for https:).
@@ -19,47 +18,6 @@ import { GAME } from './config.js';
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested in Node)
-
-// Parse the launch hash. Accepts with or without the leading '#'.
-// Returns { token: string|null, sessionId: string|null }.
-export function parseLaunchHash(hash) {
-  const out = { token: null, sessionId: null };
-  if (!hash) return out;
-  const trimmed = hash.startsWith('#') ? hash.slice(1) : hash;
-  for (const part of trimmed.split('&')) {
-    const eq = part.indexOf('=');
-    if (eq < 0) continue;
-    const key = part.slice(0, eq);
-    const value = decodeURIComponent(part.slice(eq + 1));
-    if (key === 'game_token' && value) out.token = value;
-    else if (key === 'session_id' && value) out.sessionId = value;
-  }
-  return out;
-}
-
-// Decode a JWT payload WITHOUT verifying the signature. UI convenience only.
-// Returns the claims object, or null if the token is malformed.
-export function decodeJwtPayload(token) {
-  if (typeof token !== 'string') return null;
-  const parts = token.split('.');
-  if (parts.length !== 3) return null;
-  try {
-    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
-    let json;
-    if (typeof atob === 'function') {
-      json = decodeURIComponent(
-        Array.from(atob(padded), (c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')).join('')
-      );
-    } else {
-      json = Buffer.from(padded, 'base64').toString('utf8');
-    }
-    const claims = JSON.parse(json);
-    return claims && typeof claims === 'object' ? claims : null;
-  } catch {
-    return null;
-  }
-}
 
 // Build a ws:/wss: URL for a same-origin path. protocol/host are injectable
 // for tests; in the browser pass nothing and location is used.
@@ -78,77 +36,19 @@ export function backoffDelay(attempt, baseMs = GAME.reconnectBaseMs, maxMs = GAM
 }
 
 // ---------------------------------------------------------------------------
-// Launch-token capture (browser, once per page load)
+// Launch credentials (the SDK read and stripped the fragment at page load)
 
-let captured = null;
-
-// Reads and strips the launch hash exactly once. Subsequent calls return the
-// originally captured values. Safe to call before DOM ready.
-export function captureLaunchCredentials() {
-  if (captured) return captured;
-  const { token, sessionId } = parseLaunchHash(
-    typeof location !== 'undefined' ? location.hash : ''
-  );
-  if (token && typeof history !== 'undefined' && history.replaceState) {
-    // Remove the JWT from the visible URL. session_id is not sensitive, but
-    // keeping the URL clean avoids re-processing it on refresh.
-    history.replaceState(null, '', location.pathname + location.search);
-  }
-  captured = { token, sessionId };
-  return captured;
+/** The StarHermit SDK instance (window.StarHermit; tests inject their own). */
+export function starhermit() {
+  return (typeof globalThis !== 'undefined' && globalThis.StarHermit) || null;
 }
 
-// ---------------------------------------------------------------------------
-// Token manager: holds the launch token in memory and refreshes it before
-// expiry using the documented self re-mint endpoint.
-
-export class TokenManager {
-  // onRefresh(token) is called every time the token rotates (sockets use the
-  // current value at connect time, so no action is usually needed).
-  constructor({ token, scope, api, refreshMs = GAME.tokenRefreshMs, onRefresh = null }) {
-    this.token = token;
-    this.scope = scope;
-    this.api = api;
-    this.refreshMs = refreshMs;
-    this.onRefresh = onRefresh;
-    this._timer = null;
-    this._destroyed = false;
-    if (token) this._schedule();
-  }
-
-  _schedule() {
-    this._clear();
-    this._timer = setTimeout(() => this.refresh(), this.refreshMs);
-  }
-
-  _clear() {
-    if (this._timer) {
-      clearTimeout(this._timer);
-      this._timer = null;
-    }
-  }
-
-  async refresh() {
-    if (this._destroyed || !this.token) return;
-    try {
-      // A scoped token may re-mint a token for its own game.
-      const res = await this.api.post(`/api/v1/games/${this.scope}/launch-token`, null);
-      if (res && typeof res.token === 'string') {
-        this.token = res.token;
-        if (this.onRefresh) this.onRefresh(res.token);
-      }
-    } catch {
-      // Keep the current token; retry on the next cycle. If it has genuinely
-      // expired, API calls will start failing with 401 and the UI will
-      // surface the auth problem.
-    }
-    if (!this._destroyed) this._schedule();
-  }
-
-  destroy() {
-    this._destroyed = true;
-    this._clear();
-  }
+// Returns { token, sessionId } from the SDK. Safe to call repeatedly.
+export function captureLaunchCredentials() {
+  const sh = starhermit();
+  if (!sh) return { token: null, sessionId: null };
+  if (!sh.signedIn) sh.init();
+  return { token: sh.token || null, sessionId: sh.launchSessionId || null };
 }
 
 // ---------------------------------------------------------------------------
@@ -295,25 +195,24 @@ export class ReconnectingSocket {
 }
 
 // ---------------------------------------------------------------------------
-// Bootstrap helper: build the shared net context from the captured launch
-// credentials (or a locally supplied dev token — see checkpoint 3 auth panel).
+// Bootstrap helper: build the shared net context on the SDK's token (a launch
+// token, or a locally minted dev token handed over by the auth panel).
+// `tokenManager.token` always reads the SDK's current (renewed) token.
 
-export function createNetContext({ token, apiBase = '', api = null }) {
-  const claims = token ? decodeJwtPayload(token) : null;
-  const scope = claims && typeof claims.game_scope === 'string'
-    ? claims.game_scope
-    : GAME.defaultSlug; // local-dev fallback only; production always has the claim
-  const userId = claims && typeof claims.sub === 'string' ? claims.sub : null;
-  const client = api || new ApiClient({
-    getToken: () => net.tokenManager.token,
-    baseUrl: apiBase,
-  });
-  const net = {
+export function createNetContext({ token, apiBase = '', api = null, sdk = starhermit() }) {
+  if (apiBase) sdk.base = String(apiBase).replace(/\/+$/, '');
+  if (token && sdk.token !== token) sdk.setToken(token);
+  const scope = (sdk.claims && sdk.slug) || ''; // the game_scope claim; never guessed
+  const userId = sdk.userId ? String(sdk.userId) : null;
+  const client = api || new ApiClient({ getToken: () => sdk.token, baseUrl: apiBase });
+  return {
     client,
     scope,
     userId,
-    tokenManager: null,
+    sdk,
+    tokenManager: {
+      get token() { return sdk.token; },
+      destroy() { /* renewal lives in the SDK for the whole page */ },
+    },
   };
-  net.tokenManager = new TokenManager({ token, scope, api: client });
-  return net;
 }

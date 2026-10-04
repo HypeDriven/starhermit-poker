@@ -16,7 +16,7 @@ function fakeClient(profileResponses = {}) {
   };
 }
 
-test('displayName prefers nickname, then username, then Player fallback', async () => {
+test('displayName prefers nickname, then Player fallback (never the username)', async () => {
   const cache = new ProfileCache(fakeClient({
     'u-nick': { id: 'u-nick', username: 'alice123', nickname: 'Al' },
     'u-plain': { id: 'u-plain', username: 'bob456', nickname: null },
@@ -24,7 +24,7 @@ test('displayName prefers nickname, then username, then Player fallback', async 
   await cache.profile('u-nick');
   await cache.profile('u-plain');
   assert.equal(cache.displayName('u-nick'), 'Al');
-  assert.equal(cache.displayName('u-plain'), 'bob456');
+  assert.equal(cache.displayName('u-plain'), 'Player u-plain');
   assert.equal(cache.displayName('u-1234567890ab'), 'Player u-123456');
 });
 

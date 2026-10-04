@@ -68,6 +68,11 @@ class GraphicsSettings {
     this._commit(next);
   }
 
+  /** Replace the saved settings wholesale (platform settings KV on sign-in). */
+  replace(next) {
+    this._commit(next && typeof next === 'object' ? { ...next } : {});
+  }
+
   /** Choosing a preset clears every per-category override. */
   setPreset(preset) {
     this._commit(choosePreset(this.saved, preset));

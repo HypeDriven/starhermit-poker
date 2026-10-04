@@ -2,6 +2,7 @@
 // (seats, ready, host start). Built on StarHermit realtime rooms — there is no
 // custom lobby backend.
 
+import { currentPlatformStrings } from './platform-i18n.js';
 import { GAME } from './config.js';
 import { ApiError } from './net.js';
 import { RoomController, seatMap, seatCountOf, canStart, isHost } from './realtime-room.js';
@@ -140,6 +141,39 @@ export class MenuScreen {
 
     this.inviteSection = el('div', { class: 'invite-inbox', hidden: '' });
 
+    // StarHermit account: profile nickname (+ avatar) and the invite link.
+    const net = this.ctx.net;
+    const t = currentPlatformStrings();
+    this.notice = el('p', { class: 'muted small bold', role: 'status', hidden: '' });
+    this.playerChip = el('p', { class: 'player-chip bold' });
+    if (net && net.userId && net.profiles) {
+      const nameEl = el('span', { text: net.profiles.displayName(net.userId) });
+      this.playerChip.append(nameEl);
+      net.profiles.profile(net.userId).then(() => {
+        nameEl.textContent = net.profiles.displayName(net.userId);
+      });
+      net.profiles.avatarUrl(net.userId).then((url) => {
+        if (!url || this.destroyed) return;
+        this.playerChip.prepend(el('img', {
+          class: 'player-avatar', src: url, alt: '', width: '28', height: '28',
+          style: 'border-radius:50%;vertical-align:middle;margin-right:0.4em',
+        }));
+      });
+    } else this.playerChip.hidden = true;
+    const inviteLink = net && net.sdk ? net.sdk.inviteLink() : null;
+    const inviteBtn = inviteLink ? el('button', {
+      type: 'button', text: t.invite, 'data-action': 'invite-friend',
+      onclick: async () => {
+        this.notice.hidden = false;
+        try {
+          await navigator.clipboard.writeText(inviteLink);
+          this.notice.textContent = t.inviteCopied;
+        } catch {
+          this.notice.textContent = t.inviteFailed.replace('{link}', inviteLink);
+        }
+      },
+    }) : null;
+
     // AI opponents are seated the moment a room is created (platform
     // `aiPlayers`); they only apply when we create the table — quick-joining
     // someone else's room takes its roster as-is.
@@ -162,13 +196,15 @@ export class MenuScreen {
 
     this.menu = el('div', { class: 'screen main-menu cinematic' },
       el('h1', { text: (gameInfo && gameInfo.name) || GAME.name }),
+      this.playerChip,
       el('p', {
         class: 'muted bold',
         text: me.userId
           ? `Elo ${me.elo} · ${me.wins}W / ${me.losses}L / ${me.draws}D`
           : 'No-limit Texas Hold\'em · play money only',
       }),
-      el('div', { class: 'menu-actions' }, quickBtn, privateBtn, boardBtn, replaysBtn, helpBtn, settingsButton()),
+      el('div', { class: 'menu-actions' }, quickBtn, privateBtn, boardBtn, replaysBtn, helpBtn, ...(inviteBtn ? [inviteBtn] : []), settingsButton()),
+      this.notice,
       this.helpPanel,
       aiStepper,
       this.inviteSection,

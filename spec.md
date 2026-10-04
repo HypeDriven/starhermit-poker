@@ -66,6 +66,35 @@ de-DE, fr-FR, fr-CA, pt-BR and it-IT (from the browser language).
 | `src/gfx-i18n.js` | Graphics panel strings for the nine supported locales |
 | `tests/gfx.test.js` | Unit tests for the quality model and panel strings |
 
+## StarHermit integration
+
+- `index.html` loads the shared SDK `starhermit-sdk.js` (an unchanged copy of
+  `tools/starhermit-sdk.js`) and calls `StarHermit.init()` before the app
+  modules. The SDK reads `#game_token=` (plus `session_id`) or a sign-in
+  return's `#access_token=`, strips it, and renews the token; `src/net.js`
+  builds the net context on it (`tokenManager.token` reads the SDK's current
+  token, the slug is the `game_scope` claim). A dev token minted in the auth
+  panel is handed to the SDK too, with the dev API base.
+- When renewal is refused the SDK signs out and the game returns to the local
+  menu with a notice; offline play keeps working.
+- Local menu (no token): on `<id>.starhermit.com` it shows **Sign in with
+  StarHermit**, which redirects through the platform sign-in. Without a token
+  no StarHermit request is made.
+- Platform menu: the player chip shows the profile nickname (fallback
+  `Player <id prefix>`, never the username) and avatar; **Invite a friend**
+  copies `StarHermit.inviteLink()` and confirms in a status line. Seat names
+  use the same nickname rule.
+- Settings KV: the graphics settings (`graphics`) and the sound toggle
+  (`soundEnabled`) are mirrored with `PATCH /settings` on change; on sign-in
+  the platform values win (`src/platform-prefs.js`).
+- Already platform-native (unchanged): realtime-room lobby with quick play,
+  private tables, friends picker and room invites, the `ws/v1/games` gameplay
+  socket, REST-polled session chat, voice, the Elo leaderboard, and replays.
+- Not used: cloud save (all progress — Elo, stats — is script-owned player
+  state), keyboard controls (play is pointer/touch only), achievements
+  (`server.js` declares none), matchmaking queues (rooms handle seating).
+- Account strings are localized in the nine locales (`src/platform-i18n.js`).
+
 ## Browser interference
 
 `browser-guard.js` (loaded from `index.html`) suppresses browser UI that gets in the way of play: the right-click context menu, the iOS long-press callout, copy / cut / paste, and page text selection. Text fields (inputs, textareas, selects, contenteditable) keep normal selection, context menu and clipboard behaviour.

@@ -1,6 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { ApiClient, ApiError, createNetContext } from '../src/net.js';
+
+// The StarHermit SDK is a classic browser script: evaluate it like a <script>.
+const holder = {};
+new Function('self', 'module', readFileSync(new URL('../starhermit-sdk.js', import.meta.url), 'utf8'))(holder, undefined);
+const freshSdk = () => holder.StarHermit.create({
+  window: { location: { hash: '', search: '', pathname: '/', hostname: 'localhost', origin: 'http://localhost', href: 'http://localhost/' }, history: { replaceState() {} } },
+  fetch: async () => { throw new Error('no network in this test'); },
+  setTimeout: () => 0, clearTimeout: () => {},
+});
 
 // Minimal Response stand-in matching what ApiClient consumes.
 function fakeResponse({ status = 200, body = '' }) {
@@ -82,26 +92,19 @@ test('createNetContext reads scope and user id from the token claims', () => {
   // game_scope carries the game's uid — the platform assigns it and nothing chooses it.
   const uid = '83fd04b1-3cbe-4b09-a251-3733ad4b9d94';
   const token = `${b64url({ alg: 'none' })}.${b64url({ sub: 'u-1', game_scope: uid })}.sig`;
-  const net = createNetContext({ token, apiBase: 'http://localhost:5000' });
-  // destroy() in a finally: the token manager holds a timer, so an assertion failing before it
-  // ran used to leave the test runner hanging instead of reporting the failure.
-  try {
-    assert.equal(net.scope, uid);
-    assert.equal(net.userId, 'u-1');
-    assert.equal(net.client.baseUrl, 'http://localhost:5000');
-  } finally {
-    net.tokenManager.destroy();
-  }
+  const sdk = freshSdk();
+  const net = createNetContext({ token, apiBase: 'http://localhost:5000', sdk });
+  assert.equal(net.scope, uid);
+  assert.equal(net.userId, 'u-1');
+  assert.equal(net.client.baseUrl, 'http://localhost:5000');
+  assert.equal(sdk.base, 'http://localhost:5000', 'SDK renewal targets the dev API base');
+  assert.equal(net.tokenManager.token, token, 'sockets read the SDK token');
 });
 
 test('createNetContext has no slug to fall back to without claims', () => {
   // There is no default any more: a slug is the game's uid, so no value could be guessed here.
   // Local dev supplies it explicitly through the auth panel; production always has the claim.
-  const net = createNetContext({ token: 'garbage' });
-  try {
-    assert.equal(net.scope, '');
-    assert.equal(net.userId, null);
-  } finally {
-    net.tokenManager.destroy();
-  }
+  const net = createNetContext({ token: 'garbage', sdk: freshSdk() });
+  assert.equal(net.scope, '');
+  assert.equal(net.userId, null);
 });

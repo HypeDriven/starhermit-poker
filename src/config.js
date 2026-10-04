@@ -24,10 +24,6 @@ export const GAME = Object.freeze({
   // Realtime-room creation defaults (metadata blob stored on the room).
   roomBackfillAfterSeconds: 45,
 
-  // Launch-token refresh cadence (token lifetime is 60 min; the documented
-  // reference pattern refreshes every 45 min).
-  tokenRefreshMs: 45 * 60 * 1000,
-
   // Client-side pacing for ws/v1/games commands: the platform disconnects a
   // client that sends faster than the session tick rate, and the script
   // declares tickRateHz: 1 (server.js) — so one command per second is safe.

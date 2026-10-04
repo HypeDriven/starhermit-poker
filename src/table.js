@@ -11,6 +11,7 @@ import { ChatPanel } from './chat.js';
 import { VoiceController } from './voice.js';
 import { SoundFX } from './sounds.js';
 import { settingsButton, closeSettings } from './graphics-panel.js';
+import { pushPref, SOUND_ENABLED_KEY } from './platform-prefs.js';
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -42,8 +43,6 @@ const FEED_CAP = 3;
 
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
-// localStorage key for the sound on/off preference (per-origin, survives reloads).
-const SOUND_ENABLED_KEY = 'poker.soundEnabled';
 
 function readSoundEnabled() {
   try { return localStorage.getItem(SOUND_ENABLED_KEY) !== '0'; } catch { return true; }
@@ -51,6 +50,7 @@ function readSoundEnabled() {
 
 function writeSoundEnabled(on) {
   try { localStorage.setItem(SOUND_ENABLED_KEY, on ? '1' : '0'); } catch { /* storage unavailable */ }
+  pushPref('soundEnabled', on); // StarHermit settings KV when signed in
 }
 
 // "Alice won 1,200 with Two Pair, Kings and Tens." — built from the

@@ -5,6 +5,7 @@
 // local host adapter that supplies ctx.now / ctx.random / ctx.room and keeps
 // the returned sessionState between invocations. No network, no sign-in.
 
+import { currentPlatformStrings } from './platform-i18n.js';
 import { GAME } from './config.js';
 import { seatVisual, seatUnit, presetTotal, describeLogEntry } from './table-utils.js';
 import { cardEl, describeHandComplete } from './table.js';
@@ -60,11 +61,16 @@ export class LocalMenuScreen {
         text: 'No-limit Texas Hold\'em. Play an offline table against five AI ' +
           'opponents — no sign-in needed.',
       }),
+      ...(this.ctx.notice ? [el('p', { class: 'muted bold', role: 'status', text: this.ctx.notice })] : []),
       el('div', { class: 'menu-actions' },
         el('button', {
           class: 'primary big', type: 'button', text: 'Play',
           onclick: () => this.ctx.onPlayOffline(),
         }),
+        ...(this.ctx.canSignIn && this.ctx.canSignIn() ? [el('button', {
+          type: 'button', text: currentPlatformStrings().signIn, 'data-action': 'starhermit-sign-in',
+          onclick: () => this.ctx.onSignIn(),
+        })] : []),
         el('button', {
           type: 'button', text: 'Multiplayer sign-in',
           onclick: () => this.ctx.onShowSignIn(),

@@ -4,18 +4,19 @@
 // Launch tokens may call exactly two profile endpoints:
 //   GET /api/v1/users/{id}/profile  -> { id, username, nickname }
 //   GET /api/v1/users/{id}/avatar   -> PNG bytes (404 when unset)
-// Display convention: nickname wins; then username; then
-// "Player " + id.slice(0,8). Results (including failures and avatars) are
+// Display convention: the profile nickname, else "Player " + id.slice(0,8)
+// (never the username). Before a profile arrives (or when it fails) the
+// roster's name stands in. Results (including failures and avatars) are
 // cached for the session — no documented freshness/ETag mechanism exists.
+// Avatars come through the StarHermit SDK (Bearer + the SDK's API base).
 // AI seats never go through here: their display name comes from the roster.
 
 export class ProfileCache {
-  // client: ApiClient (JSON calls); getToken: () => current launch token
-  // (for the raw avatar fetch). onUpdate(userId) fires when data arrives so
-  // screens can re-render.
-  constructor(client, { getToken } = {}) {
+  // client: ApiClient (JSON calls); sdk: StarHermit SDK instance (avatars).
+  // onUpdate(userId) fires when data arrives so screens can re-render.
+  constructor(client, { sdk = globalThis.StarHermit || null } = {}) {
     this.client = client;
-    this.getToken = getToken || (() => null);
+    this.sdk = sdk;
     this.listeners = new Set();
     this.profiles = new Map(); // userId -> Promise<profile|null>
     this.resolved = new Map(); // userId -> profile|null (arrived)
@@ -46,7 +47,7 @@ export class ProfileCache {
   displayName(userId, fallbackUsername) {
     const p = this.resolved.get(userId);
     if (p && p.nickname) return p.nickname;
-    if (p && p.username) return p.username;
+    if (p) return `Player ${String(userId).slice(0, 8)}`;
     if (fallbackUsername) return fallbackUsername;
     return `Player ${String(userId).slice(0, 8)}`;
   }
@@ -55,14 +56,8 @@ export class ProfileCache {
     if (!this.avatars.has(userId)) {
       this.avatars.set(userId, (async () => {
         try {
-          const headers = {};
-          const token = this.getToken();
-          if (token) headers.Authorization = `Bearer ${token}`;
-          const base = this.client.baseUrl || '';
-          const res = await fetch(`${base}/api/v1/users/${userId}/avatar`, { headers });
-          if (!res.ok) return null;
-          const url = URL.createObjectURL(await res.blob());
-          this.onUpdate(userId);
+          const url = this.sdk ? await this.sdk.avatarUrl(userId) : null;
+          if (url) this.onUpdate(userId);
           return url;
         } catch {
           return null;

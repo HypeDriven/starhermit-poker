@@ -18,9 +18,12 @@ html, body { margin: 0; padding: 0; min-height: 100%; background:
   color: var(--fg); font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
 body::before { content: ''; position: fixed; inset: 0; pointer-events: none; opacity: .18;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.22'/%3E%3C/svg%3E"); }
-#app { min-height: 100vh; display: flex; flex-direction: column; position: relative; }
+#app { min-height: calc(100vh / var(--ui-scale, 1)); display: flex; flex-direction: column; position: relative; }
+/* Large screens: ui-scale.js sets --ui-scale (1 up to 1600x1000); the app and body-level
+   panels zoom by it, vw/vh inside are divided, and the 3D canvases multiply their pixel ratio. */
+#app, body > .settings-backdrop, #fps-meter { zoom: var(--ui-scale, 1); }
 .screen { padding: 1.25rem; max-width: 62rem; margin: 0 auto; width: 100%; }
-h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(1.55rem, 4vw, 2.25rem);
+h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(1.55rem, calc(4vw / var(--ui-scale, 1)), 2.25rem);
   letter-spacing: .035em; font-weight: 500; color: #fff9e8; text-shadow: 0 4px 24px #000; }
 
 /* Auth panel / forms */
@@ -57,13 +60,13 @@ button.big { padding: 0.9rem 1.6rem; font-size: 1.1rem; }
      hides as you scroll, and a height that tracks it resizes the WebGL canvas
      mid-animation, flickering the scene. Over-sizing hides under the bar
      instead. Browsers without lvh fall back to the inset above. */
-  height: 100lvh;
+  height: calc(100lvh / var(--ui-scale, 1));
   background: radial-gradient(ellipse at 50% 60%, #101c30 0, #05070d 70%); }
 .menu3d-stage canvas { width: 100%; height: 100%; display: block; }
 .main-menu.cinematic { position: relative; z-index: 1; max-width: none;
-  min-height: 100vh; margin: 0; display: flex; flex-direction: column;
+  min-height: calc(100vh / var(--ui-scale, 1)); margin: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; text-align: center; gap: 0.2rem; }
-.main-menu.cinematic h1 { font-size: clamp(2.4rem, 6.5vw, 4.2rem); margin: 0 0 0.4rem;
+.main-menu.cinematic h1 { font-size: clamp(2.4rem, calc(6.5vw / var(--ui-scale, 1)), 4.2rem); margin: 0 0 0.4rem;
   letter-spacing: 0.12em; text-transform: uppercase;
   background: linear-gradient(180deg, #fff6da 20%, #e8c66a 55%, #8a6420 90%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
@@ -73,9 +76,9 @@ button.big { padding: 0.9rem 1.6rem; font-size: 1.1rem; }
 /* guidance text gets an opaque backing over the animated casino so it stays
    readable on phones; the muted tone is lifted for contrast */
 .main-menu.cinematic p.muted { color: #d6dfec; background: rgba(6, 10, 18, 0.72); padding: .35rem .8rem;
-  border-radius: 10px; max-width: min(92vw, 42rem); backdrop-filter: blur(6px); }
+  border-radius: 10px; max-width: min(calc(92vw / var(--ui-scale, 1)), 42rem); backdrop-filter: blur(6px); }
 .main-menu.cinematic .help-panel { background: rgba(6, 10, 18, 0.9); border: 1px solid var(--line); border-radius: 12px;
-  padding: .8rem 1.1rem; max-width: min(92vw, 40rem); text-align: left; margin-top: .5rem; color: #e7edf6; font-size: .9rem; }
+  padding: .8rem 1.1rem; max-width: min(calc(92vw / var(--ui-scale, 1)), 40rem); text-align: left; margin-top: .5rem; color: #e7edf6; font-size: .9rem; }
 .main-menu.cinematic .help-panel h2 { margin: 0 0 .4rem; font-size: 1.1rem; }
 .main-menu.cinematic .help-panel h3 { margin: .6rem 0 .3rem; font-size: .95rem; }
 .main-menu.cinematic .help-panel ol { margin: 0; padding-left: 1.3rem; }
@@ -160,7 +163,7 @@ button.seat { font: inherit; color: inherit; text-align: left; width: 100%; }
 .table-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; min-height: 310px;
   /* height budget: the table always leaves room for the status line and the
      action bar inside the viewport (the 3D view refits to the wider box) */
-  max-height: calc(100dvh - 190px);
+  max-height: calc(calc(100dvh / var(--ui-scale, 1)) - 190px);
   overflow: hidden; border-radius: 22px; isolation: isolate; background:
   radial-gradient(ellipse at 50% 35%, #182942 0, #090d16 56%, #05070c 100%);
   border: 1px solid rgba(145, 174, 213, .14); box-shadow: 0 24px 70px rgba(0,0,0,.52),
@@ -282,7 +285,7 @@ button.preset { flex: 1; padding: .24rem .4rem; border-radius: 7px; font-size: .
 
 @media (max-width: 760px) {
   .table-screen { padding: .35rem; }
-  .table-stage { aspect-ratio: 4 / 4.7; border-radius: 14px; min-height: 390px; max-height: calc(100dvh - 240px); }
+  .table-stage { aspect-ratio: 4 / 4.7; border-radius: 14px; min-height: 390px; max-height: calc(calc(100dvh / var(--ui-scale, 1)) - 240px); }
   .action-bar { grid-template-columns: 1fr; }
   .seat-panel { min-width: 4.2rem; max-width: 5.8rem; font-size: .65rem; padding: .24rem .36rem; }
   .seat-flags { max-width: 5rem; white-space: nowrap; overflow: hidden; }
@@ -292,11 +295,12 @@ button.preset { flex: 1; padding: .24rem .4rem; border-radius: 7px; font-size: .
 @media (max-height: 500px) and (orientation: landscape) {
   .table-screen { padding: .3rem; gap: .35rem; }
   .table-status { font-size: .6rem; min-height: .8rem; }
-  .table-stage { min-height: 0; max-height: calc(100dvh - 130px); border-radius: 12px; }
+  .table-stage { min-height: 0; max-height: calc(calc(100dvh / var(--ui-scale, 1)) - 130px); border-radius: 12px; }
   .action-bar { padding: .35rem; gap: .35rem; bottom: .2rem; }
   .action-buttons button { min-height: 2.2rem; }
   .event-feed, .chat-panel, .voice-panel { display: none; }
-  .table-center { top: 24%; }
+  /* below the top seat panel, which is clamped inside the short stage */
+  .table-center { top: max(24%, 5.4rem); }
 }
 
 @media (max-width: 420px) {

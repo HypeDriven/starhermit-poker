@@ -232,7 +232,8 @@ export class GfxPipeline {
     const rescale = this._adapt(dtMs);
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
-    const ratio = pixelRatio(this.q, window.devicePixelRatio || 1, this.adaptiveScale);
+    // The canvas sits inside the CSS-zoomed #app (ui-scale.js): render at layout size x zoom.
+    const ratio = pixelRatio(this.q, window.devicePixelRatio || 1, this.adaptiveScale) * ((window.UIScale && UIScale.value) || 1);
     if (w !== this.size[0] || h !== this.size[1] || ratio !== this.pixelRatio || rescale) {
       this.size = [w, h];
       this.pixelRatio = ratio;

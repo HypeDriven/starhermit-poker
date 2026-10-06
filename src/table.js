@@ -6,7 +6,7 @@
 import { RoomController } from './realtime-room.js';
 import { GameSocket } from './game-socket.js';
 import { TableRenderer } from './table3d.js';
-import { seatVisual, seatUnit, presetTotal, describeLogEntry } from './table-utils.js';
+import { seatVisual, seatUnit, presetTotal, describeLogEntry, keepSeatInStage } from './table-utils.js';
 import { ChatPanel } from './chat.js';
 import { VoiceController } from './voice.js';
 import { SoundFX } from './sounds.js';
@@ -442,6 +442,7 @@ export class TableScreen {
           seatEl.append(el('div', { class: 'seat-reveal' }, ...shown.map(cardEl)));
         }
         this.seatOverlay.append(seatEl);
+        keepSeatInStage(seatEl, y);
       }
     }
 

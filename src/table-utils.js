@@ -54,3 +54,11 @@ export function presetTotal(la, roundCommit, pot, kind) {
   const total = roundCommit + toCall + Math.ceil(kind * (pot + toCall));
   return Math.max(la.minimumAmount, Math.min(total, la.maximumAmount));
 }
+
+// Keep a seat panel (already appended to the seat overlay) fully inside the
+// stage: on short screens the top and bottom seats' centres sit closer to the
+// stage edge than half a panel height, which clipped names and hole cards.
+export function keepSeatInStage(seatEl, y) {
+  const half = seatEl.offsetHeight / 2 + 2;
+  if (half > 2) seatEl.style.top = `clamp(${half}px, ${50 + y * 44}%, calc(100% - ${half}px))`;
+}

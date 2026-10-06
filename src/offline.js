@@ -7,7 +7,7 @@
 
 import { currentPlatformStrings } from './platform-i18n.js';
 import { GAME } from './config.js';
-import { seatVisual, seatUnit, presetTotal, describeLogEntry } from './table-utils.js';
+import { seatVisual, seatUnit, presetTotal, describeLogEntry, keepSeatInStage } from './table-utils.js';
 import { cardEl, describeHandComplete } from './table.js';
 import { settingsButton, closeSettings } from './graphics-panel.js';
 
@@ -356,6 +356,7 @@ export class LocalTableScreen {
           seatEl.append(el('div', { class: 'seat-reveal' }, ...shown.map(cardEl)));
         }
         this.seatOverlay.append(seatEl);
+        keepSeatInStage(seatEl, y);
       }
     }
 

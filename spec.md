@@ -55,6 +55,10 @@ keyboard (focus trap, Escape closes), mouse and touch operable, scrolls inside
 itself on short screens, and is localized for en-US, en-GB, es-419, es-ES,
 de-DE, fr-FR, fr-CA, pt-BR and it-IT (from the browser language).
 
+## Large screens
+
+Above 1600×1000 the shared `ui-scale.js` sets `--ui-scale` (`min(w/1600, h/1000)`, capped at 2.5): `#app`, the body-level settings backdrop and the FPS meter are CSS-zoomed by it, vw/vh lengths inside them are divided by it, and the 3D menu/table canvases multiply their pixel ratio by it so they stay sharp. At 1600×1000 and below the layout is unchanged.
+
 ## File map (graphics)
 
 | Path | What it is |

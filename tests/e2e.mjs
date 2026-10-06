@@ -301,7 +301,7 @@ async function runGraphicsPass(browser, name, ctxOpts, { touch }) {
     } else await loc.click();
   };
   const preset = () => page.evaluate(() => document.body.dataset.gfxPreset);
-  const vp = ctxOpts.viewport;
+  const vp = page.viewportSize();
   const panelFits = async () => {
     const bb = await page.locator('#settings-panel').boundingBox();
     if (!bb || bb.x < 0 || bb.y < 0 || bb.x + bb.width > vp.width + 1 || bb.y + bb.height > vp.height + 1) {

@@ -603,7 +603,8 @@ export class LobbyScreen {
     this.canMoveAi = participants.length < seatCount;
 
     this.statusLine.textContent =
-      `Status: ${room.status} · ${participants.length}/${seatCount} seats` +
+      // A room snapshot can arrive before its status is known: never print "undefined".
+      (room.status ? `Status: ${room.status} · ` : '') + `${participants.length}/${seatCount} seats` +
       (room.status === 'Open'
         ? ` · open for matchmaking (AI backfill ~${room.config?.backfillAfterSeconds ?? GAME.roomBackfillAfterSeconds}s after opening)`
         : '') +

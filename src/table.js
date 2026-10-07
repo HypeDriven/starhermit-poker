@@ -12,6 +12,7 @@ import { VoiceController } from './voice.js';
 import { SoundFX } from './sounds.js';
 import { settingsButton, closeSettings } from './graphics-panel.js';
 import { pushPref, SOUND_ENABLED_KEY } from './platform-prefs.js';
+import { currentPlatformStrings } from './platform-i18n.js';
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -197,8 +198,30 @@ export class TableScreen {
     } else if (msg.type === 'match-complete') {
       const winner = msg.result && msg.result.winnerName;
       this.pushEvent(winner ? `The match is over — ${cap(winner)} won.` : 'The match is over.', 'win');
+      this.showMatchRank(msg.result);
       this.render();
     }
+  }
+
+  // The match winner's tables-won total is posted by server.js to the
+  // match-wins board; show the signed-in player's rank on the result.
+  async showMatchRank(result) {
+    const sh = globalThis.StarHermit;
+    if (!sh || !sh.signedIn || !result || this._lbShown) return;
+    this._lbShown = true;
+    const t = currentPlatformStrings();
+    if (result.winnerUserId !== this.ctx.net.userId) { this.lbText = t.lbNotPosted; this.render(); return; }
+    this.lbText = t.lbPosting;
+    this.render();
+    let mine = null;
+    for (let i = 0; i < 8 && !mine && !this.destroyed; i++) {
+      if (i) await new Promise((r) => setTimeout(r, 1500));
+      const r = await sh.leaderboard('match-wins', { pageSize: 100 }).catch(() => null);
+      mine = r && (r.items || []).find((e) => e.userId === this.ctx.net.userId);
+    }
+    if (this.destroyed) return;
+    this.lbText = mine ? t.lbRank.replace('{rank}', mine.rank) : t.lbPosted;
+    this.render();
   }
 
   // Sound effects driven by state diffs: a deal swish on a new hand, a card
@@ -395,6 +418,9 @@ export class TableScreen {
           class: 'match-result',
           text: `Winner: ${pub.matchResult.winnerName || '–'}`,
         }));
+        if (this.lbText) {
+          this.centerInfo.append(el('div', { class: 'match-lb', id: 'match-lb', text: this.lbText }));
+        }
       }
     }
 

@@ -103,6 +103,14 @@ Above 1600×1000 the shared `ui-scale.js` sets `--ui-scale` (`min(w/1600, h/1000
 - Already platform-native (unchanged): realtime-room lobby with quick play,
   private tables, friends picker and room invites, the `ws/v1/games` gameplay
   socket, REST-polled session chat, voice, the Elo leaderboard, and replays.
+- Tables-won leaderboard: `leaderboards.json` declares `match-wins` ("Tables
+  won", integer, higher is better, 1–1,000,000). When a match ends, `server.js`
+  returns the winner's running `wins` count in `scores` (a seat its player
+  left earns nothing), so a solo player earns it by beating AI opponents at a
+  private table. The table's result panel shows "Leaderboard rank: #N" to the
+  signed-in winner and "Only a table win counts on the leaderboard." to the
+  others; these strings are localized in `src/platform-i18n.js`. Offline play
+  posts nothing.
 - Not used: cloud save (all progress — Elo, stats — is script-owned player
   state), keyboard controls (play is pointer/touch only), achievements
   (`server.js` declares none), matchmaking queues (rooms handle seating).

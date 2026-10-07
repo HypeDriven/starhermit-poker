@@ -1,0 +1,3 @@
+{
+  "match-wins": { "name": "Tables won", "scoreType": "integer", "sortDirection": "desc", "minScore": 1, "maxScore": 1000000 }
+}

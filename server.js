@@ -1584,6 +1584,13 @@ function finalizeInvocation(state, ctx, { handsBefore, hadResult, response }) {
     // replay, publishes eloUpdates, and closes the room).
     response.result = state.matchResult;
     response.eloUpdates = state.matchResult.eloAfter;
+    // The match winner's running count of tables won goes to the game's own
+    // match-wins leaderboard (leaderboards.json). A seat its player left (now
+    // played by the AI) earns nothing.
+    const w = state.matchResult.winnerSeat >= 0 ? state.seats[state.matchResult.winnerSeat] : null;
+    if (w && w.userId && !w.left && ps[w.userId]) {
+      response.scores = { 'match-wins': { [w.userId]: ps[w.userId].wins } };
+    }
   }
   return response;
 }

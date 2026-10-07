@@ -11,6 +11,10 @@ const EN_US = {
   expired: "Your StarHermit session has expired, so online play stopped. Go back to StarHermit to start a fresh session, or keep playing offline.",
   relaunch: "Back to StarHermit",
   relaunchFailed: "Could not open StarHermit — reopen the game from the StarHermit library.",
+  lbPosting: "Posting to the leaderboard…",
+  lbRank: "Leaderboard rank: #{rank}",
+  lbPosted: "Win posted to the leaderboard.",
+  lbNotPosted: "Only a table win counts on the leaderboard.",
 };
 
 const STRINGS = {
@@ -25,6 +29,10 @@ const STRINGS = {
     expired: "Tu sesión de StarHermit venció y el juego en línea se detuvo. Vuelve a StarHermit para iniciar una sesión nueva o sigue jugando sin conexión.",
     relaunch: "Volver a StarHermit",
     relaunchFailed: "No se pudo abrir StarHermit: vuelve a abrir el juego desde la biblioteca de StarHermit.",
+    lbPosting: "Publicando en la clasificación…",
+    lbRank: "Puesto en la clasificación: #{rank}",
+    lbPosted: "Victoria publicada en la clasificación.",
+    lbNotPosted: "Solo ganar la mesa cuenta en la clasificación.",
   },
   "es-ES": {
     signIn: "Iniciar sesión con StarHermit",
@@ -35,6 +43,10 @@ const STRINGS = {
     expired: "Tu sesión de StarHermit ha caducado y el juego en línea se ha detenido. Vuelve a StarHermit para iniciar una sesión nueva o sigue jugando sin conexión.",
     relaunch: "Volver a StarHermit",
     relaunchFailed: "No se ha podido abrir StarHermit: vuelve a abrir el juego desde la biblioteca de StarHermit.",
+    lbPosting: "Publicando en la clasificación…",
+    lbRank: "Puesto en la clasificación: #{rank}",
+    lbPosted: "Victoria publicada en la clasificación.",
+    lbNotPosted: "Solo ganar la mesa cuenta en la clasificación.",
   },
   "de-DE": {
     signIn: "Mit StarHermit anmelden",
@@ -45,6 +57,10 @@ const STRINGS = {
     expired: "Deine StarHermit-Sitzung ist abgelaufen, daher wurde das Online-Spiel beendet. Kehre zu StarHermit zurück, um eine neue Sitzung zu starten, oder spiele offline weiter.",
     relaunch: "Zurück zu StarHermit",
     relaunchFailed: "StarHermit konnte nicht geöffnet werden – starte das Spiel erneut aus der StarHermit-Bibliothek.",
+    lbPosting: "Wird in die Bestenliste eingetragen …",
+    lbRank: "Platz in der Bestenliste: #{rank}",
+    lbPosted: "Sieg in die Bestenliste eingetragen.",
+    lbNotPosted: "Nur ein Tischsieg zählt für die Bestenliste.",
   },
   "fr-FR": {
     signIn: "Se connecter avec StarHermit",
@@ -55,6 +71,10 @@ const STRINGS = {
     expired: "Votre session StarHermit a expiré et le jeu en ligne s’est arrêté. Retournez sur StarHermit pour ouvrir une nouvelle session, ou continuez à jouer hors ligne.",
     relaunch: "Retour à StarHermit",
     relaunchFailed: "Impossible d’ouvrir StarHermit : relancez le jeu depuis la bibliothèque StarHermit.",
+    lbPosting: "Envoi au classement…",
+    lbRank: "Rang au classement : #{rank}",
+    lbPosted: "Victoire inscrite au classement.",
+    lbNotPosted: "Seule une victoire à la table compte pour le classement.",
   },
   "fr-CA": {
     signIn: "Se connecter avec StarHermit",
@@ -65,6 +85,10 @@ const STRINGS = {
     expired: "Votre session StarHermit a expiré et le jeu en ligne s’est arrêté. Retournez sur StarHermit pour ouvrir une nouvelle session, ou continuez à jouer hors ligne.",
     relaunch: "Retour à StarHermit",
     relaunchFailed: "Impossible d’ouvrir StarHermit : relancez le jeu à partir de la bibliothèque StarHermit.",
+    lbPosting: "Envoi au classement…",
+    lbRank: "Rang au classement : #{rank}",
+    lbPosted: "Victoire inscrite au classement.",
+    lbNotPosted: "Seule une victoire à la table compte pour le classement.",
   },
   "pt-BR": {
     signIn: "Entrar com StarHermit",
@@ -75,6 +99,10 @@ const STRINGS = {
     expired: "Sua sessão do StarHermit expirou e o jogo online parou. Volte ao StarHermit para iniciar uma nova sessão ou continue jogando offline.",
     relaunch: "Voltar ao StarHermit",
     relaunchFailed: "Não foi possível abrir o StarHermit — abra o jogo novamente pela biblioteca do StarHermit.",
+    lbPosting: "Enviando para o ranking…",
+    lbRank: "Posição no ranking: #{rank}",
+    lbPosted: "Vitória registrada no ranking.",
+    lbNotPosted: "Só vencer a mesa conta no ranking.",
   },
   "it-IT": {
     signIn: "Accedi con StarHermit",
@@ -85,6 +113,10 @@ const STRINGS = {
     expired: "La tua sessione StarHermit è scaduta e il gioco online si è interrotto. Torna su StarHermit per avviare una nuova sessione o continua a giocare offline.",
     relaunch: "Torna a StarHermit",
     relaunchFailed: "Impossibile aprire StarHermit: riapri il gioco dalla libreria di StarHermit.",
+    lbPosting: "Invio alla classifica…",
+    lbRank: "Posizione in classifica: #{rank}",
+    lbPosted: "Vittoria registrata in classifica.",
+    lbNotPosted: "Solo vincere il tavolo conta in classifica.",
   },
 };
 

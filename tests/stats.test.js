@@ -89,6 +89,14 @@ test('player documents track wins, losses, streaks, and recent games', () => {
   assert.ok(winnerDoc.elo === 1216);
 });
 
+test('the match winner posts their tables-won count to match-wins', () => {
+  const { finalRes } = playMatch();
+  const winner = finalRes.result.placements[0].userId;
+  const loser = finalRes.result.placements[1].userId;
+  assert.deepEqual(j(finalRes.scores), { 'match-wins': { [winner]: 1 } });
+  assert.equal(finalRes.scores['match-wins'][loser], undefined);
+});
+
 test('elo math: favorite gains less, underdog gains more', () => {
   // Second match with skewed ratings carried in via playerStates.
   const ctx = twoHumanCtx({

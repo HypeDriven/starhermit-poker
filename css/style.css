@@ -180,6 +180,7 @@ button.seat { font: inherit; color: inherit; text-align: left; width: 100%; }
   font-size: .79rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
   box-shadow: 0 4px 20px #0008; }
 .match-result { color: #ffe08a; font-family: Georgia, serif; font-weight: 700; margin-top: .4rem; }
+.match-lb { color: #ffe08a; font-size: .9rem; margin-top: .25rem; }
 
 .seat-panel { position: absolute; transform: translate(-50%, -50%); background:
   linear-gradient(145deg, rgba(27,38,55,.94), rgba(9,14,23,.94));

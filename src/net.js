@@ -11,7 +11,8 @@
 // - All REST paths are same-origin relative; the game slug always comes from
 //   the `game_scope` claim, never from a hard-coded constant.
 // - WebSocket scheme follows the page protocol (ws: for http:, wss: for https:).
-// - Reconnects use exponential backoff from 1 s to a 30 s ceiling.
+// - Reconnects use exponential backoff from 1 s to a 30 s ceiling, and every
+//   reconnect renews the launch token first (StarHermit.renewForReconnect).
 // - Every timer and socket is cancellable via destroy().
 
 import { GAME } from './config.js';
@@ -108,12 +109,20 @@ export class ApiClient {
 export class ReconnectingSocket {
   // urlFactory: () => string  (called on every connect, so refreshed tokens
   // and new session ids are picked up). Handlers: onOpen, onMessage(data, isBinary),
-  // onDown (socket lost, will retry), onGiveUp optional.
-  constructor({ urlFactory, onOpen, onMessage, onDown, backoff = backoffDelay, wsImpl = null }) {
+  // onDown (socket lost, will retry), onAuthLost (renewal refused; stopped for good).
+  // renew: () => Promise<'renewed'|'retry'|'relaunch'> runs before every
+  // REconnect (never the first connect): a dropped socket may be an expired
+  // launch token — refused before the upgrade, seen only as 1006 — and the
+  // same URL can never recover. 'renewed' reopens with a fresh urlFactory()
+  // URL, 'retry' backs off without reopening, 'relaunch' stops.
+  constructor({ urlFactory, onOpen, onMessage, onDown, onAuthLost, renew = null, backoff = backoffDelay, wsImpl = null }) {
     this.urlFactory = urlFactory;
     this.onOpen = onOpen || (() => {});
     this.onMessage = onMessage || (() => {});
     this.onDown = onDown || (() => {});
+    this.onAuthLost = onAuthLost || (() => {});
+    this.renew = renew;
+    this._gen = 0; // bumps on connect()/destroy(): a pending renewal for an older attempt is dropped
     this.backoff = backoff;
     this.WS = wsImpl || (typeof WebSocket !== 'undefined' ? WebSocket : null);
     this.attempt = 0;
@@ -125,6 +134,7 @@ export class ReconnectingSocket {
 
   connect() {
     if (this._destroyed) return;
+    this._gen++;
     this._cancelTimer();
     this._closeSocket();
     const ws = new this.WS(this.urlFactory());
@@ -155,7 +165,24 @@ export class ReconnectingSocket {
   _scheduleReconnect() {
     if (this._destroyed) return;
     const delay = this.backoff(this.attempt++);
-    this._timer = setTimeout(() => this.connect(), delay);
+    this._timer = setTimeout(() => this._reconnect(), delay);
+  }
+
+  // Renew the launch token first, then open a URL built from the current one.
+  async _reconnect() {
+    this._timer = null;
+    if (this._destroyed) return;
+    if (!this.renew) { this.connect(); return; }
+    const gen = this._gen;
+    let r;
+    try { r = await this.renew(); } catch { r = 'retry'; }
+    if (this._destroyed || gen !== this._gen) return; // destroyed or superseded meanwhile
+    if (r === 'renewed') this.connect();
+    else if (r === 'retry') this._scheduleReconnect(); // keep backing off; never reopen the old URL
+    else {
+      this._destroyed = true; // token dead: only a fresh launch can mint a new one
+      this.onAuthLost();
+    }
   }
 
   send(textOrBinary) {
@@ -189,6 +216,7 @@ export class ReconnectingSocket {
 
   destroy() {
     this._destroyed = true;
+    this._gen++;
     this._cancelTimer();
     this._closeSocket();
   }
@@ -212,6 +240,11 @@ export function createNetContext({ token, apiBase = '', api = null, sdk = starhe
     sdk,
     tokenManager: {
       get token() { return sdk.token; },
+      // Before every socket REconnect: 'renewed' | 'retry' | 'relaunch' (the
+      // SDK then signed out and emitted auth {signedIn:false, reason:'expired'}).
+      renewForReconnect() {
+        return typeof sdk.renewForReconnect === 'function' ? sdk.renewForReconnect() : Promise.resolve('relaunch');
+      },
       destroy() { /* renewal lives in the SDK for the whole page */ },
     },
   };

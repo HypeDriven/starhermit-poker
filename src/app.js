@@ -17,7 +17,7 @@
 import { GAME } from './config.js';
 import { captureLaunchCredentials, createNetContext, starhermit } from './net.js';
 import { loadPlatformPrefs } from './platform-prefs.js';
-import { currentPlatformStrings } from './platform-i18n.js';
+import { currentPlatformStrings, signedOutMenu } from './platform-i18n.js';
 import { showAuthPanel, clearDevToken } from './auth-panel.js';
 import { RoomController } from './realtime-room.js';
 import { MenuScreen, LobbyScreen } from './lobby.js';
@@ -191,14 +191,16 @@ function makeLocalCtx() {
   };
 }
 
-// The SDK signs out when token renewal is refused: drop back to the local
-// menu (offline play keeps working; sign-in is offered again where possible).
+// The SDK signs out when token renewal is refused (sockets stop reconnecting):
+// drop back to the local menu (offline play keeps working; sign-in is offered
+// again where possible). An expired session also offers "Back to StarHermit",
+// which relaunches for a fresh launch token.
 function watchSignOut() {
   const sh = starhermit();
   if (!sh) return;
   sh.on('auth', (a) => {
     if (a.signedIn) return;
-    switchScreen(new LocalMenuScreen({ ...makeLocalCtx(), notice: currentPlatformStrings().signedOut }));
+    switchScreen(new LocalMenuScreen({ ...makeLocalCtx(), ...signedOutMenu(a, sh) }));
   });
 }
 

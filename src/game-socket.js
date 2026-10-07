@@ -22,7 +22,9 @@ export class GameSocket {
   //   onEvent(msg)      — action / hand-started / hand-complete / match-complete
   //   onError(message)  — platform or script error frames
   //   onPresence(p)     — { userId, online }
-  //   onDown()          — socket lost (reconnect follows automatically)
+  //   onDown()          — socket lost (reconnect follows automatically, after
+  //                       renewing the launch token)
+  //   onAuthLost()      — renewal refused: no further reconnects
   // opts.minIntervalMs: command pacing (tests override with a small value).
   constructor(net, sessionId, handlers = {}, { minIntervalMs = GAME.cmdMinIntervalMs } = {}) {
     this.net = net;
@@ -47,6 +49,10 @@ export class GameSocket {
       },
       onMessage: (data, isBinary) => this._onFrame(data, isBinary),
       onDown: () => this.handlers.onDown && this.handlers.onDown(),
+      // Every reconnect renews the launch token first; urlFactory then reads the new one.
+      renew: this.net.tokenManager.renewForReconnect ? () => this.net.tokenManager.renewForReconnect() : null,
+      // Renewal refused: stopped for good; the SDK's auth event shows the relaunch prompt.
+      onAuthLost: () => this.handlers.onAuthLost && this.handlers.onAuthLost(),
     });
   }
 

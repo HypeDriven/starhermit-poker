@@ -79,8 +79,17 @@ Above 1600×1000 the shared `ui-scale.js` sets `--ui-scale` (`min(w/1600, h/1000
   builds the net context on it (`tokenManager.token` reads the SDK's current
   token, the slug is the `game_scope` claim). A dev token minted in the auth
   panel is handed to the SDK too, with the dev API base.
-- When renewal is refused the SDK signs out and the game returns to the local
-  menu with a notice; offline play keeps working.
+- Every socket reconnect (gameplay `ws/v1/games` and the realtime-room
+  socket) renews the launch token first via `StarHermit.renewForReconnect()`
+  and reopens with a URL built from the current token; a transient renewal
+  failure keeps backing off (1 s → 30 s) without reopening the old URL. The
+  voice socket does not auto-reconnect (voice re-joins on the next enable).
+- When renewal is refused the SDK signs out, sockets stop reconnecting and the
+  game returns to the local menu with a notice; offline play keeps working.
+  When the session expired the notice says so and a **Back to StarHermit**
+  button relaunches through the StarHermit launcher (or sign-in for sign-in
+  launches); if the browser refuses, the notice says to reopen the game from
+  the library. These strings are localized in the nine supported locales.
 - Local menu (no token): on `<id>.starhermit.com` it shows **Sign in with
   StarHermit**, which redirects through the platform sign-in. Without a token
   no StarHermit request is made.

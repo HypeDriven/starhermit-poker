@@ -72,7 +72,7 @@ export class ReadyTracker {
 export class RoomController {
   // net: the shared net context (client, scope, tokenManager).
   // Handlers: onRoster(room), onPresence({userId, online}), onReady(participantId, ready),
-  // onResult(result), onSocketDown().
+  // onResult(result), onSocketDown(), onAuthLost().
   constructor(net, handlers = {}) {
     this.net = net;
     this.handlers = handlers;
@@ -189,6 +189,9 @@ export class RoomController {
       }),
       onMessage: (data, isBinary) => this._onFrame(data, isBinary),
       onDown: () => this.handlers.onSocketDown && this.handlers.onSocketDown(),
+      // Every reconnect renews the launch token first; urlFactory then reads the new one.
+      renew: this.net.tokenManager.renewForReconnect ? () => this.net.tokenManager.renewForReconnect() : null,
+      onAuthLost: () => this.handlers.onAuthLost && this.handlers.onAuthLost(),
     });
     this.socket.connect();
   }

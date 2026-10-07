@@ -36,7 +36,7 @@ function el(tag, attrs = {}, ...children) {
 // Local menu: the cold-load landing when no platform launch happened.
 
 export class LocalMenuScreen {
-  // ctx: { root, onPlayOffline(), onShowSignIn() }
+  // ctx: { root, onPlayOffline(), onShowSignIn(), notice?, onRelaunch()? → bool }
   constructor(ctx) {
     this.ctx = ctx;
   }
@@ -63,8 +63,20 @@ export class LocalMenuScreen {
       }),
       ...(this.ctx.notice ? [el('p', { class: 'muted bold', role: 'status', text: this.ctx.notice })] : []),
       el('div', { class: 'menu-actions' },
+        // Session expired: a fresh launch from StarHermit is the only way back
+        // online. relaunch() navigates the launcher's top window, which needs
+        // this click's user gesture.
+        ...(this.ctx.onRelaunch ? [el('button', {
+          class: 'primary big', type: 'button', text: currentPlatformStrings().relaunch,
+          'data-action': 'starhermit-relaunch',
+          onclick: (ev) => {
+            if (this.ctx.onRelaunch()) return;
+            const note = ev.currentTarget.closest('.screen').querySelector('[role="status"]');
+            if (note) note.textContent = currentPlatformStrings().relaunchFailed;
+          },
+        })] : []),
         el('button', {
-          class: 'primary big', type: 'button', text: 'Play',
+          class: this.ctx.onRelaunch ? 'big' : 'primary big', type: 'button', text: 'Play',
           onclick: () => this.ctx.onPlayOffline(),
         }),
         ...(this.ctx.canSignIn && this.ctx.canSignIn() ? [el('button', {

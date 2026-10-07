@@ -1,3 +1,16 @@
 {
-  "match-wins": { "name": "Tables won", "scoreType": "integer", "sortDirection": "desc", "minScore": 1, "maxScore": 1000000 }
+  "match-wins": {
+    "name": "Tables won",
+    "scoreType": "integer",
+    "sortDirection": "desc",
+    "minScore": 1,
+    "maxScore": 1000000
+  },
+  "hands-won": {
+    "name": "Hands won",
+    "scoreType": "integer",
+    "sortDirection": "desc",
+    "minScore": 0,
+    "maxScore": 10000000
+  }
 }

@@ -14,7 +14,6 @@ const EN_US = {
   lbPosting: "Posting to the leaderboard…",
   lbRank: "Leaderboard rank: #{rank}",
   lbPosted: "Win posted to the leaderboard.",
-  lbNotPosted: "Only a table win counts on the leaderboard.",
 };
 
 const STRINGS = {
@@ -32,7 +31,6 @@ const STRINGS = {
     lbPosting: "Publicando en la clasificación…",
     lbRank: "Puesto en la clasificación: #{rank}",
     lbPosted: "Victoria publicada en la clasificación.",
-    lbNotPosted: "Solo ganar la mesa cuenta en la clasificación.",
   },
   "es-ES": {
     signIn: "Iniciar sesión con StarHermit",
@@ -46,7 +44,6 @@ const STRINGS = {
     lbPosting: "Publicando en la clasificación…",
     lbRank: "Puesto en la clasificación: #{rank}",
     lbPosted: "Victoria publicada en la clasificación.",
-    lbNotPosted: "Solo ganar la mesa cuenta en la clasificación.",
   },
   "de-DE": {
     signIn: "Mit StarHermit anmelden",
@@ -60,7 +57,6 @@ const STRINGS = {
     lbPosting: "Wird in die Bestenliste eingetragen …",
     lbRank: "Platz in der Bestenliste: #{rank}",
     lbPosted: "Sieg in die Bestenliste eingetragen.",
-    lbNotPosted: "Nur ein Tischsieg zählt für die Bestenliste.",
   },
   "fr-FR": {
     signIn: "Se connecter avec StarHermit",
@@ -74,7 +70,6 @@ const STRINGS = {
     lbPosting: "Envoi au classement…",
     lbRank: "Rang au classement : #{rank}",
     lbPosted: "Victoire inscrite au classement.",
-    lbNotPosted: "Seule une victoire à la table compte pour le classement.",
   },
   "fr-CA": {
     signIn: "Se connecter avec StarHermit",
@@ -88,7 +83,6 @@ const STRINGS = {
     lbPosting: "Envoi au classement…",
     lbRank: "Rang au classement : #{rank}",
     lbPosted: "Victoire inscrite au classement.",
-    lbNotPosted: "Seule une victoire à la table compte pour le classement.",
   },
   "pt-BR": {
     signIn: "Entrar com StarHermit",
@@ -102,7 +96,6 @@ const STRINGS = {
     lbPosting: "Enviando para o ranking…",
     lbRank: "Posição no ranking: #{rank}",
     lbPosted: "Vitória registrada no ranking.",
-    lbNotPosted: "Só vencer a mesa conta no ranking.",
   },
   "it-IT": {
     signIn: "Accedi con StarHermit",
@@ -116,7 +109,6 @@ const STRINGS = {
     lbPosting: "Invio alla classifica…",
     lbRank: "Posizione in classifica: #{rank}",
     lbPosted: "Vittoria registrata in classifica.",
-    lbNotPosted: "Solo vincere il tavolo conta in classifica.",
   },
 };
 

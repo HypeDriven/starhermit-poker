@@ -89,12 +89,15 @@ test('player documents track wins, losses, streaks, and recent games', () => {
   assert.ok(winnerDoc.elo === 1216);
 });
 
-test('the match winner posts their tables-won count to match-wins', () => {
+test('the match winner posts tables won; every seated player posts hands won', () => {
   const { finalRes } = playMatch();
   const winner = finalRes.result.placements[0].userId;
   const loser = finalRes.result.placements[1].userId;
-  assert.deepEqual(j(finalRes.scores), { 'match-wins': { [winner]: 1 } });
-  assert.equal(finalRes.scores['match-wins'][loser], undefined);
+  const s = j(finalRes.scores);
+  assert.deepEqual(s['match-wins'], { [winner]: 1 });
+  assert.equal(s['match-wins'][loser], undefined);
+  assert.deepEqual(Object.keys(s['hands-won']).sort(), [winner, loser].sort());
+  for (const id of [winner, loser]) assert.ok(Number.isInteger(s['hands-won'][id]) && s['hands-won'][id] >= 0);
 });
 
 test('elo math: favorite gains less, underdog gains more', () => {

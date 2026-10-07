@@ -203,20 +203,21 @@ export class TableScreen {
     }
   }
 
-  // The match winner's tables-won total is posted by server.js to the
-  // match-wins board; show the signed-in player's rank on the result.
+  // server.js posts the winner's tables-won total to match-wins and every
+  // seated player's hands won to hands-won; show the signed-in player's rank on
+  // the board that this result moved (match-wins for a win, hands-won otherwise).
   async showMatchRank(result) {
     const sh = globalThis.StarHermit;
     if (!sh || !sh.signedIn || !result || this._lbShown) return;
     this._lbShown = true;
     const t = currentPlatformStrings();
-    if (result.winnerUserId !== this.ctx.net.userId) { this.lbText = t.lbNotPosted; this.render(); return; }
+    const board = result.winnerUserId === this.ctx.net.userId ? 'match-wins' : 'hands-won';
     this.lbText = t.lbPosting;
     this.render();
     let mine = null;
     for (let i = 0; i < 8 && !mine && !this.destroyed; i++) {
       if (i) await new Promise((r) => setTimeout(r, 1500));
-      const r = await sh.leaderboard('match-wins', { pageSize: 100 }).catch(() => null);
+      const r = await sh.leaderboard(board, { pageSize: 100 }).catch(() => null);
       mine = r && (r.items || []).find((e) => e.userId === this.ctx.net.userId);
     }
     if (this.destroyed) return;

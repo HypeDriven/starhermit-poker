@@ -1588,9 +1588,17 @@ function finalizeInvocation(state, ctx, { handsBefore, hadResult, response }) {
     // match-wins leaderboard (leaderboards.json). A seat its player left (now
     // played by the AI) earns nothing.
     const w = state.matchResult.winnerSeat >= 0 ? state.seats[state.matchResult.winnerSeat] : null;
+    const scores = {};
     if (w && w.userId && !w.left && ps[w.userId]) {
-      response.scores = { 'match-wins': { [w.userId]: ps[w.userId].wins } };
+      scores['match-wins'] = { [w.userId]: ps[w.userId].wins };
     }
+    // Every player still seated posts their career hands won to hands-won, so
+    // a lost table still counts.
+    for (const seat of state.seats) {
+      if (!seat.userId || seat.left || !ps[seat.userId]) continue;
+      (scores['hands-won'] = scores['hands-won'] || {})[seat.userId] = ps[seat.userId].handsWon || 0;
+    }
+    if (Object.keys(scores).length) response.scores = scores;
   }
   return response;
 }

@@ -109,16 +109,13 @@ export class RoomController {
     return room;
   }
 
-  // The caller's current non-Closed room, or null (404).
+  // The caller's current non-Closed room, or null. /rooms/joined answers []
+  // rather than the 404 /rooms/mine gives when idle (a logged console error).
   async myRoom() {
-    try {
-      const room = await this.net.client.get(`${ROOMS}/mine`);
-      this.room = room;
-      return room;
-    } catch (e) {
-      if (e && e.status === 404) return null;
-      throw e;
-    }
+    const rooms = await this.net.client.get(`${ROOMS}/joined`);
+    const room = (rooms || []).find((r) => r.status !== 'Closed') || null;
+    if (room) this.room = room;
+    return room;
   }
 
   openRoom(roomId) {

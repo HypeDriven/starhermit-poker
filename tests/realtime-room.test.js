@@ -125,10 +125,17 @@ test('quickJoin requests exactly one seat', async () => {
   assert.deepEqual(net.posts[0].body, { gameSlug: 'poker', seats: 1 });
 });
 
-test('myRoom maps 404 to null', async () => {
+test('myRoom reads /rooms/joined: first non-Closed room, null when none', async () => {
   const net = fakeNet();
+  const paths = [];
+  let rooms = [];
+  net.client.get = async (path) => { paths.push(path); return rooms; };
   const controller = new RoomController(net);
   assert.equal(await controller.myRoom(), null);
+  assert.deepEqual(paths, ['/api/v1/realtime/rooms/joined']);
+  rooms = [{ id: 'old', status: 'Closed' }, { id: 'r2', status: 'Playing' }];
+  assert.equal((await controller.myRoom()).id, 'r2');
+  assert.equal(controller.room.id, 'r2');
 });
 
 test('roster push frames update the room and reach the handler', () => {

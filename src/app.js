@@ -8,7 +8,7 @@
 //      the auth panel, or show the panel to mint one.
 //   3. Probe GET /api/v1/games/{scope} — validates the token and loads game
 //      info (leaderboard id, my stats) used by the menu screens.
-//   4. Reconnect: GET /api/v1/realtime/rooms/mine — a non-Closed room drops
+//   4. Reconnect: GET /api/v1/realtime/rooms/joined — a non-Closed room drops
 //      the player straight back into its lobby (or the table when Playing).
 //
 // Screens are mounted into #screen-root; every screen owns its timers and

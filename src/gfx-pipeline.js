@@ -247,7 +247,7 @@ export class GfxPipeline {
     }
     if (this.composer) {
       try {
-        this.composer.render(dtMs / 1000);
+        (globalThis.GameOptions ? globalThis.GameOptions.draw(this.composer.renderer, () => this.composer.render(dtMs / 1000)) : this.composer.render(dtMs / 1000));
         return;
       } catch {
         // Latch the fallback: a chain that fails intermittently would flicker.
@@ -255,7 +255,7 @@ export class GfxPipeline {
         this._disposeComposer();
       }
     }
-    r.render(this.scene, this.camera);
+    (globalThis.GameOptions ? globalThis.GameOptions.draw(r, () => r.render(this.scene, this.camera)) : r.render(this.scene, this.camera));
   }
 
   _disposeComposer() {

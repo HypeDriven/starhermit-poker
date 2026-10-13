@@ -61,7 +61,7 @@ export class SoundFX {
     const ctx = this._ensure();
     if (!ctx) return;
     const t0 = ctx.currentTime + at;
-    const src = ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createBufferSource(), null) : ctx.createBufferSource());
     src.buffer = this._noiseBuffer(ctx, dur + 0.02);
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass';
@@ -84,7 +84,7 @@ export class SoundFX {
     const ctx = this._ensure();
     if (!ctx) return;
     const t0 = ctx.currentTime + at;
-    const osc = ctx.createOscillator();
+    const osc = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createOscillator(), null) : ctx.createOscillator());
     osc.type = type;
     osc.frequency.setValueAtTime(from, t0);
     if (to) osc.frequency.exponentialRampToValueAtTime(to, t0 + dur);

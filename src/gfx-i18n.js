@@ -1,6 +1,7 @@
-// Strings for the Settings → Graphics panel. The rest of the game is English
-// only; this panel follows the browser language (navigator.language), with
-// a language-prefix fallback and en-US as the last resort.
+// Strings for the Settings → Graphics panel, in the game language (i18n.js:
+// the Language setting); an explicit locale argument still resolves by tag.
+
+import { getLocale } from './i18n.js';
 
 const en = {
   settings: 'Settings',
@@ -188,12 +189,9 @@ export function pickLocale(tag) {
   return PREFIX[lang] || 'en-US';
 }
 
-let current = null;
-
-/** Strings for `locale` (default: the browser language), falling back to en-US key by key. */
+/** Strings for `locale` (default: the game language), falling back to en-US key by key. */
 export function strings(locale) {
-  const loc = locale ? pickLocale(locale)
-    : current || (current = pickLocale(typeof navigator !== 'undefined' ? navigator.language : 'en-US'));
+  const loc = locale ? pickLocale(locale) : getLocale();
   return { ...en, ...STRINGS[loc], locale: loc };
 }
 

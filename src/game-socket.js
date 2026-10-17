@@ -25,6 +25,8 @@ export class GameSocket {
   //   onDown()          — socket lost (reconnect follows automatically, after
   //                       renewing the launch token)
   //   onAuthLost()      — renewal refused: no further reconnects
+  //   onTermsRequired() — updated StarHermit terms need consent: no further reconnects
+  //   onUnavailable()   — the session is gone or finished: no further reconnects
   // opts.minIntervalMs: command pacing (tests override with a small value).
   constructor(net, sessionId, handlers = {}, { minIntervalMs = GAME.cmdMinIntervalMs } = {}) {
     this.net = net;
@@ -51,13 +53,31 @@ export class GameSocket {
       onDown: () => this.handlers.onDown && this.handlers.onDown(),
       // Every reconnect renews the launch token first; urlFactory then reads the new one.
       renew: this.net.tokenManager.renewForReconnect ? () => this.net.tokenManager.renewForReconnect() : null,
+      // Before reopening: does the session still exist and run?
+      available: () => this.sessionAvailable(),
       // Renewal refused: stopped for good; the SDK's auth event shows the relaunch prompt.
       onAuthLost: () => this.handlers.onAuthLost && this.handlers.onAuthLost(),
+      // Terms consent required: stopped; app.js shows the terms notice (SDK `termsrequired`).
+      onTermsRequired: () => this.handlers.onTermsRequired && this.handlers.onTermsRequired(),
+      // Session gone or finished: stopped; the table says so.
+      onUnavailable: () => this.handlers.onUnavailable && this.handlers.onUnavailable(),
     });
   }
 
   connect() {
     this.socket.connect();
+  }
+
+  // false when the session is gone (404/403/410) or no longer active; throws
+  // on network trouble (the reconnect loop then keeps trying).
+  async sessionAvailable() {
+    try {
+      const s = await this.net.client.get(`/api/v1/games/${this.net.scope}/sessions/${this.sessionId}`);
+      return !!s && (!s.status || s.status === 'active');
+    } catch (e) {
+      if (e && [403, 404, 410].includes(e.status)) return false;
+      throw e;
+    }
   }
 
   // Queue a game command. By default the current stateVersion rides along so

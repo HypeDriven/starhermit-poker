@@ -3,6 +3,9 @@
 // same logic drives the browser viewer and the Node tests. Uses the shared
 // pokerRules (injected) so replay behavior cannot drift from server behavior.
 
+import { t } from './i18n.js';
+import { describeLogEntry } from './table-utils.js';
+
 export const REPLAY_SPEEDS = [0.5, 1, 2, 4];
 
 export class ReplayEngine {
@@ -64,22 +67,23 @@ export class ReplayEngine {
       });
     };
 
-    snap(`Hand #${hand.n} — blinds`, { activeSeat: hand.dealer });
+    // Labels are functions so the viewer renders them in the current language.
+    snap(() => t('Hand #{n} — blinds', { n: hand.n }), { activeSeat: hand.dealer });
     let boardShown = 0;
     for (const [seat, action, amount] of hand.actions) {
       if (seat === -1) {
         // Street marker: reveal the next board cards.
         const target = action === 'street-flop' ? 3 : action === 'street-turn' ? 4 : 5;
         boardShown = Math.min(target, hand.board.length);
-        snap(action.replace('street-', '').toUpperCase(), {
+        const street = action.replace('street-', '');
+        snap(() => t('street.' + street).toUpperCase(), {
           board: hand.board.slice(0, boardShown),
         });
         continue;
       }
       if (action === 'fold' || action === 'timeout-fold') folded[seat] = true;
       commits[seat] += amount;
-      const name = this.seatMeta[seat] ? this.seatMeta[seat].name : `Seat ${seat + 1}`;
-      snap(`${name} ${action}${amount ? ' ' + amount : ''}`, {
+      snap(() => describeLogEntry([0, hand.n, seat, action, amount], this.seatMeta).replace(/\.$/, ''), {
         board: hand.board.slice(0, boardShown),
         activeSeat: seat,
       });
@@ -87,9 +91,10 @@ export class ReplayEngine {
     // Final: showdown / result with payouts applied.
     const won = this.seatMeta.map(() => 0);
     for (const w of hand.winners || []) won[w.seat] = w.amount;
-    snap(hand.winners && hand.winners.length
-      ? hand.winners.map((w) => `${this.seatMeta[w.seat]?.name ?? 'Seat ' + (w.seat + 1)} +${w.amount}`).join(' · ')
-      : 'Hand complete', {
+    const winners = hand.winners || [];
+    snap(() => (winners.length
+      ? winners.map((w) => `${this.seatMeta[w.seat]?.name ?? t('Seat {n}', { n: w.seat + 1 })} +${w.amount}`).join(' · ')
+      : t('Hand complete')), {
       board: hand.board.slice(),
       reveal: hand.reveal || null,
       winners: hand.winners || [],

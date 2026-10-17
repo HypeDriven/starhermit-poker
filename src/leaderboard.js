@@ -3,18 +3,7 @@
 // Reads only — scores are written exclusively by the script's eloUpdates.
 
 import { GAME } from './config.js';
-
-function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') node.className = v;
-    else if (k === 'text') node.textContent = v;
-    else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
-    else node.setAttribute(k, v);
-  }
-  node.append(...children);
-  return node;
-}
+import { el, t } from './i18n.js';
 
 export class LeaderboardScreen {
   // ctx: { root, net, gameInfo, onBack() }
@@ -37,35 +26,35 @@ export class LeaderboardScreen {
     const me = (gameInfo && gameInfo.me) || {};
 
     this.toggleBtn = el('button', {
-      type: 'button', text: 'Friends: off',
+      type: 'button', i18n: 'Friends: off',
       onclick: () => {
         this.friendsOnly = !this.friendsOnly;
-        this.toggleBtn.textContent = `Friends: ${this.friendsOnly ? 'on' : 'off'}`;
+        this.toggleBtn.dataset.i18n = this.friendsOnly ? 'Friends: on' : 'Friends: off';
+        this.toggleBtn.textContent = t(this.toggleBtn.dataset.i18n);
         this.page = 1;
         this.load();
       },
     });
     this.rows = el('div', { class: 'lb-rows' });
     this.status = el('p', { class: 'muted' });
-    this.prevBtn = el('button', { type: 'button', text: '‹ Prev', onclick: () => this.turn(-1) });
-    this.nextBtn = el('button', { type: 'button', text: 'Next ›', onclick: () => this.turn(1) });
+    this.prevBtn = el('button', { type: 'button', i18n: '‹ Prev', onclick: () => this.turn(-1) });
+    this.nextBtn = el('button', { type: 'button', i18n: 'Next ›', onclick: () => this.turn(1) });
 
     root.append(el('div', { class: 'screen leaderboard' },
-      el('h1', { text: 'Leaderboard' }),
+      el('h1', { i18n: 'Leaderboard' }),
       el('p', {
         class: 'muted',
-        text: me.userId
-          ? `You: elo ${me.elo} · ${me.wins}W / ${me.losses}L / ${me.draws}D · ${me.activeSessionCount} active`
-          : '',
+        ...(me.userId ? { i18n: ['You: elo {elo} · {w}W / {l}L / {d}D · {n} active',
+          { elo: me.elo, w: me.wins, l: me.losses, d: me.draws, n: me.activeSessionCount }] } : {}),
       }),
       el('div', { class: 'lb-controls' }, this.toggleBtn),
       this.status, this.rows,
       el('div', { class: 'lb-controls' }, this.prevBtn, this.nextBtn),
-      el('button', { type: 'button', text: 'Back', onclick: () => this.ctx.onBack() }),
+      el('button', { type: 'button', i18n: 'Back', onclick: () => this.ctx.onBack() }),
     ));
 
     if (!this.leaderboardId()) {
-      this.status.textContent = 'No leaderboard is provisioned for this game yet.';
+      this.setStatus(() => t('No leaderboard is provisioned for this game yet.'));
       return;
     }
     this.load();
@@ -77,7 +66,7 @@ export class LeaderboardScreen {
   }
 
   async load() {
-    this.status.textContent = 'Loading…';
+    this.setStatus(() => t('Loading…'));
     this.prevBtn.disabled = this.page <= 1;
     try {
       const data = await this.ctx.net.client.get(
@@ -87,14 +76,26 @@ export class LeaderboardScreen {
       this.entries = (data && data.items) || [];
       this.total = (data && data.total) || 0;
       this.nextBtn.disabled = this.page * this.pageSize >= this.total;
-      this.status.textContent = this.entries.length
-        ? `${this.total} players`
-        : 'No entries yet — play a match.';
+      const total = this.total;
+      this.setStatus(this.entries.length
+        ? () => t('{n} players', { n: total })
+        : () => t('No entries yet — play a match.'));
       for (const e of this.entries) this.ctx.net.profiles.profile(e.userId);
       this.renderRows();
     } catch (e) {
-      this.status.textContent = `Could not load the leaderboard: ${e.message || e}`;
+      const error = e.message || e;
+      this.setStatus(() => t('Could not load the leaderboard: {error}', { error }));
     }
+  }
+
+  // fn: returns the status line in the current language (re-run on a change).
+  setStatus(fn) {
+    this._status = fn;
+    this.status.textContent = fn();
+  }
+
+  relocalize() {
+    if (this._status && this.status) this.status.textContent = this._status();
   }
 
   renderRows() {

@@ -6,25 +6,14 @@
 import { RoomController } from './realtime-room.js';
 import { GameSocket } from './game-socket.js';
 import { TableRenderer } from './table3d.js';
-import { seatVisual, seatUnit, presetTotal, describeLogEntry, keepSeatInStage } from './table-utils.js';
+import { seatVisual, seatUnit, presetTotal, describeLogEntry, keepSeatInStage, seatName } from './table-utils.js';
 import { ChatPanel } from './chat.js';
 import { VoiceController } from './voice.js';
 import { SoundFX } from './sounds.js';
 import { settingsButton, closeSettings } from './graphics-panel.js';
 import { pushPref, SOUND_ENABLED_KEY } from './platform-prefs.js';
 import { currentPlatformStrings } from './platform-i18n.js';
-
-function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') node.className = v;
-    else if (k === 'text') node.textContent = v;
-    else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
-    else node.setAttribute(k, v);
-  }
-  node.append(...children);
-  return node;
-}
+import { el, t, num, streetName, handDescription, serverMessage } from './i18n.js';
 
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const SUIT_GLYPHS = ['♣', '♦', '♥', '♠'];
@@ -55,18 +44,59 @@ function writeSoundEnabled(on) {
 }
 
 // "Alice won 1,200 with Two Pair, Kings and Tens." — built from the
-// hand-complete payload rather than the server's compact description.
-export function describeHandComplete(msg) {
+// hand-complete payload rather than the server's compact description, in the
+// game language at call time.
+// nameOf(winner) overrides a winner's display name (the offline table shows
+// its player as "You" in the game language).
+export function describeHandComplete(msg, nameOf = null) {
   if (!Array.isArray(msg.winners) || msg.winners.length === 0) {
-    return msg.description || 'The hand ended.';
+    return msg.description || t('The hand ended.');
   }
-  const names = msg.winners.map((w) => cap(w.name || `Seat ${w.seat + 1}`)).join(' and ');
-  const total = msg.winners.reduce((t, w) => t + (w.amount || 0), 0).toLocaleString();
+  const names = msg.winners.map((w) => cap((nameOf && nameOf(w))
+    || w.name || t('Seat {n}', { n: w.seat + 1 }))).join(t(' and '));
+  const total = num(msg.winners.reduce((s, w) => s + (w.amount || 0), 0));
   const desc = msg.description || '';
   const handDesc = desc.includes(' — ') ? desc.slice(desc.lastIndexOf(' — ') + 3) : '';
-  if (handDesc) return `${names} won ${total} with ${handDesc}.`;
-  if (/everyone else folded/.test(desc)) return `${names} won ${total} — everyone else folded.`;
-  return `${names} won ${total}.`;
+  if (handDesc) return t('{names} won {total} with {hand}.', { names, total, hand: handDescription(handDesc) });
+  if (/everyone else folded/.test(desc)) return t('{names} won {total} — everyone else folded.', { names, total });
+  return t('{names} won {total}.', { names, total });
+}
+
+/** "The match is over — Ada won." in the game language. */
+export function describeMatchOver(winner) {
+  return winner ? t('The match is over — {name} won.', { name: cap(winner) }) : t('The match is over.');
+}
+
+/** Seat badges (dealer, blinds, AI, state) in the game language. */
+export function seatBadges(s, pub, { offline = true } = {}) {
+  const b = [];
+  if (s.seat === pub.dealerSeat) b.push(t('badge.dealer'));
+  if (s.seat === pub.smallBlindSeat) b.push(t('badge.sb'));
+  if (s.seat === pub.bigBlindSeat) b.push(t('badge.bb'));
+  if (s.ai) b.push(t('badge.ai'));
+  if (s.allIn) b.push(t('badge.all-in'));
+  if (s.folded) b.push(t('badge.fold'));
+  if (s.sittingOut || s.eliminated) b.push(t('badge.out'));
+  if (offline && s.disconnected) b.push(t('badge.offline'));
+  return b;
+}
+
+/** Status line: "Hand #3 · flop" (+ reconnecting / match over). */
+export function tableStatus(pub, { reconnecting = false, stopped = '' } = {}) {
+  return t('Hand #{n}', { n: pub?.handNumber ?? '–' }) + ' · ' + streetName(pub?.street) +
+    (stopped ? ' · ' + stopped : reconnecting ? ' · ' + t('reconnecting…') : '') +
+    (pub?.matchResult ? ' · ' + t('match over') : '');
+}
+
+/** Action-bar labels for the current legal actions (shared with the offline table). */
+export function labelActionBar(view, la, pub) {
+  if (!la) {
+    view.checkCallBtn.textContent = t('Check / Call');
+    view.betRaiseBtn.textContent = t('Bet / Raise');
+    return;
+  }
+  view.checkCallBtn.textContent = la.callAmount > 0 ? t('Call {n}', { n: num(la.callAmount) }) : t('Check');
+  view.betRaiseBtn.textContent = pub.currentBet === 0 ? t('Bet') : t('Raise to');
 }
 
 export class TableScreen {
@@ -91,6 +121,9 @@ export class TableScreen {
         if (r.status === 'Closed' && !this.destroyed) this.ctx.onExitToMenu();
         this.render();
       },
+      // The room vanished while we were away: the game socket decides what
+      // the player sees (it may still be finishing the match).
+      onUnavailable: () => this.render(),
     });
     if (room.gameSessionId) this.attachGame(room.gameSessionId);
 
@@ -117,6 +150,7 @@ export class TableScreen {
       onEvent: (msg) => this.onGameEvent(msg),
       onError: (message) => this.showError(message),
       onDown: () => this.render(),
+      onUnavailable: () => this.onUnavailable(),
     });
     this.game.connect();
     this.attachChat(sessionId);
@@ -159,12 +193,12 @@ export class TableScreen {
   renderVoicePanel() {
     if (!this.voicePanel || !this.voice) return;
     const enabled = this.voice.enabled;
-    this.voiceBtn.textContent = enabled ? 'Voice: on' : 'Voice: off';
+    this.voiceBtn.textContent = enabled ? t('Voice: on') : t('Voice: off');
     this.muteBtn.hidden = !enabled;
     this.voiceBtn.disabled = !enabled && !this.hasOtherHumans();
     this.voiceBtn.title = this.hasOtherHumans()
-      ? 'Join table voice chat (microphone)'
-      : 'Voice is available when another human is at the table';
+      ? t('Join table voice chat (microphone)')
+      : t('Voice is available when another human is at the table');
     this.voiceList.textContent = '';
     if (enabled) {
       for (const p of this.voice.participants) {
@@ -189,15 +223,15 @@ export class TableScreen {
   // hand lifecycle lines the log does not carry.
   onGameEvent(msg) {
     if (msg.type === 'hand-started') {
-      this.pushEvent(`Hand #${msg.handNumber} began.`);
+      this.pushEvent(() => t('Hand #{n} began.', { n: msg.handNumber }));
     } else if (msg.type === 'hand-complete') {
-      this.pushEvent(describeHandComplete(msg), 'win');
+      this.pushEvent(() => describeHandComplete(msg), 'win');
       this.sounds.win();
       // Show the revealed showdown cards on the seat overlays for a while.
       this.revealUntil = Date.now() + REVEAL_WINDOW_MS;
     } else if (msg.type === 'match-complete') {
       const winner = msg.result && msg.result.winnerName;
-      this.pushEvent(winner ? `The match is over — ${cap(winner)} won.` : 'The match is over.', 'win');
+      this.pushEvent(() => describeMatchOver(winner), 'win');
       this.showMatchRank(msg.result);
       this.render();
     }
@@ -210,9 +244,8 @@ export class TableScreen {
     const sh = globalThis.StarHermit;
     if (!sh || !sh.signedIn || !result || this._lbShown) return;
     this._lbShown = true;
-    const t = currentPlatformStrings();
     const board = result.winnerUserId === this.ctx.net.userId ? 'match-wins' : 'hands-won';
-    this.lbText = t.lbPosting;
+    this.lbText = () => currentPlatformStrings().lbPosting;
     this.render();
     let mine = null;
     for (let i = 0; i < 8 && !mine && !this.destroyed; i++) {
@@ -221,7 +254,7 @@ export class TableScreen {
       mine = r && (r.items || []).find((e) => e.userId === this.ctx.net.userId);
     }
     if (this.destroyed) return;
-    this.lbText = mine ? t.lbRank.replace('{rank}', mine.rank) : t.lbPosted;
+    this.lbText = mine ? () => currentPlatformStrings().lbRank.replace('{rank}', mine.rank) : () => currentPlatformStrings().lbPosted;
     this.render();
   }
 
@@ -248,19 +281,44 @@ export class TableScreen {
     for (const entry of pub.recentLog) {
       if (!Array.isArray(entry) || entry[0] <= this.seenLogSeq) continue;
       this.seenLogSeq = entry[0];
-      this.pushEvent(describeLogEntry(entry, pub.seats));
+      const seats = pub.seats;
+      this.pushEvent(() => describeLogEntry(entry, seats));
     }
   }
 
+  // text: a function returning the line in the current language (re-run on a
+  // language change) or a plain string.
   pushEvent(text, cls = '') {
     this.feedItems.push({ text, cls });
     while (this.feedItems.length > FEED_CAP) this.feedItems.shift();
-    if (this.feed) {
-      this.feed.textContent = '';
-      for (const item of this.feedItems.slice().reverse()) {
-        this.feed.append(el('div', { class: `feed-item${item.cls ? ' ' + item.cls : ''}`, text: item.text }));
-      }
+    this.renderFeed();
+  }
+
+  renderFeed() {
+    if (!this.feed) return;
+    this.feed.textContent = '';
+    for (const item of this.feedItems.slice().reverse()) {
+      const text = typeof item.text === 'function' ? item.text() : item.text;
+      this.feed.append(el('div', { class: `feed-item${item.cls ? ' ' + item.cls : ''}`, text }));
     }
+  }
+
+  // Language change: static labels re-apply through data-i18n; the rest here.
+  relocalize() {
+    if (this.destroyed) return;
+    this.renderFeed();
+    this.render();
+    if (this.voiceMuted !== undefined && this.muteBtn) this.muteBtn.textContent = this.voiceMuted ? t('Unmute') : t('Mute');
+    if (this.soundBtn) this.soundBtn.textContent = this.sounds.enabled ? t('Sound: on') : t('Sound: off');
+    if (this.lastError && this.errorLine && !this.errorLine.hidden) this.errorLine.textContent = serverMessage(this.lastError);
+  }
+
+  // The game session is gone or finished while we were disconnected: the
+  // reconnect loop stopped; say so and leave the last view on screen.
+  onUnavailable() {
+    if (this.destroyed) return;
+    this.unavailable = true;
+    this.render();
   }
 
   show() {
@@ -279,34 +337,34 @@ export class TableScreen {
       this.glContainer, this.seatOverlay, this.centerInfo);
 
     // Action bar.
-    this.foldBtn = el('button', { type: 'button', text: 'Fold', onclick: () => this.act('fold') });
+    this.foldBtn = el('button', { type: 'button', i18n: 'Fold', onclick: () => this.act('fold') });
     this.checkCallBtn = el('button', { type: 'button', onclick: () => this.actCheckCall() });
     this.betRaiseBtn = el('button', { class: 'primary', type: 'button', onclick: () => this.actBetRaise() });
-    this.allInBtn = el('button', { type: 'button', text: 'All-in', onclick: () => this.act('all-in') });
-    this.amountInput = el('input', { type: 'range', class: 'bet-slider', 'aria-label': 'Bet or raise total' });
+    this.allInBtn = el('button', { type: 'button', i18n: 'All-in', onclick: () => this.act('all-in') });
+    this.amountInput = el('input', { type: 'range', class: 'bet-slider', i18nAria: 'Bet or raise total' });
     this.amountLabel = el('span', { class: 'bet-amount' });
     this.presets = el('div', { class: 'bet-presets' });
     for (const [label, fn] of [
-      ['Min', () => this.preset('min')],
-      ['½ Pot', () => this.preset(0.5)],
-      ['¾ Pot', () => this.preset(0.75)],
-      ['Pot', () => this.preset(1)],
-      ['All-in', () => this.preset('all')],
+      ['preset.min', () => this.preset('min')],
+      ['preset.half', () => this.preset(0.5)],
+      ['preset.three-quarters', () => this.preset(0.75)],
+      ['preset.pot', () => this.preset(1)],
+      ['preset.all-in', () => this.preset('all')],
     ]) {
-      this.presets.append(el('button', { type: 'button', class: 'preset', text: label, onclick: fn }));
+      this.presets.append(el('button', { type: 'button', class: 'preset', i18n: label, onclick: fn }));
     }
 
     const actionBar = el('div', { class: 'action-bar' },
       el('div', { class: 'action-buttons' }, this.foldBtn, this.checkCallBtn, this.betRaiseBtn, this.allInBtn),
       el('div', { class: 'bet-controls' }, this.amountInput, this.amountLabel, this.presets));
 
-    const leaveBtn = el('button', { type: 'button', text: 'Leave table', onclick: () => this.leave() });
+    const leaveBtn = el('button', { type: 'button', i18n: 'Leave table', onclick: () => this.leave() });
 
     this.chatContainer = el('div', { class: 'chat-container' });
 
     // Voice controls (default OFF; explicit microphone opt-in).
     this.voiceBtn = el('button', {
-      type: 'button', text: 'Voice: off',
+      type: 'button', text: t('Voice: off'),
       onclick: () => {
         if (!this.voice) return;
         if (this.voice.enabled) this.voice.disable();
@@ -314,22 +372,22 @@ export class TableScreen {
       },
     });
     this.muteBtn = el('button', {
-      type: 'button', text: 'Mute', hidden: '',
+      type: 'button', text: t('Mute'), hidden: '',
       onclick: () => {
         if (!this.voice) return;
         this.voiceMuted = !this.voiceMuted;
-        this.muteBtn.textContent = this.voiceMuted ? 'Unmute' : 'Mute';
+        this.muteBtn.textContent = this.voiceMuted ? t('Unmute') : t('Mute');
         this.voice.setMuted(this.voiceMuted);
       },
     });
     this.voiceList = el('span', { class: 'voice-list' });
     // Sound effects (procedural, subtle; the context unlocks on first tap).
     this.soundBtn = el('button', {
-      type: 'button', text: this.sounds.enabled ? 'Sound: on' : 'Sound: off',
+      type: 'button', text: this.sounds.enabled ? t('Sound: on') : t('Sound: off'),
       onclick: () => {
         this.sounds.setEnabled(!this.sounds.enabled);
         writeSoundEnabled(this.sounds.enabled);
-        this.soundBtn.textContent = this.sounds.enabled ? 'Sound: on' : 'Sound: off';
+        this.soundBtn.textContent = this.sounds.enabled ? t('Sound: on') : t('Sound: off');
         if (this.sounds.enabled) this.sounds.unlock();
       },
     });
@@ -347,7 +405,7 @@ export class TableScreen {
       this.renderer3d = new TableRenderer(this.glContainer);
     } catch (e) {
       // WebGL unavailable: the DOM overlay still renders the full game.
-      this.glContainer.append(el('p', { class: 'muted', text: '3D unavailable — playing in text mode.' }));
+      this.glContainer.append(el('p', { class: 'muted', i18n: '3D unavailable — playing in text mode.' }));
       this.renderer3d = null;
     }
 
@@ -394,7 +452,7 @@ export class TableScreen {
   // --- rendering ----------------------------------------------------------
 
   renderAmount() {
-    this.amountLabel.textContent = this.currentAmount().toLocaleString();
+    this.amountLabel.textContent = num(this.currentAmount());
   }
 
   render() {
@@ -403,24 +461,29 @@ export class TableScreen {
     const pub = gs?.publicState;
     const you = gs?.you;
 
-    this.statusLine.textContent =
-      `Hand #${pub?.handNumber ?? '–'} · ${pub?.street ?? 'waiting'}` +
-      (this.game?.socket.connected ? '' : ' · reconnecting…') +
-      (pub?.matchResult ? ' · match over' : '');
+    const stopped = this.unavailable && !pub?.matchResult;
+    this.statusLine.textContent = tableStatus(pub, {
+      reconnecting: !this.game?.socket.connected,
+      stopped: stopped ? t('connection closed') : '',
+    });
 
     // Center: pot + board status.
     this.centerInfo.textContent = '';
+    if (stopped) {
+      this.centerInfo.append(el('div', { class: 'online-stop', role: 'alert',
+        text: t('This table is no longer available — leave it to return to the menu.') }));
+    }
     if (pub) {
       this.centerInfo.append(
-        el('div', { class: 'pot-display', text: `Pot ${pub.pot.toLocaleString()}` }),
+        el('div', { class: 'pot-display', text: t('Pot {n}', { n: num(pub.pot) }) }),
       );
       if (pub.matchResult) {
         this.centerInfo.append(el('div', {
           class: 'match-result',
-          text: `Winner: ${pub.matchResult.winnerName || '–'}`,
+          text: t('Winner: {name}', { name: pub.matchResult.winnerName || '–' }),
         }));
         if (this.lbText) {
-          this.centerInfo.append(el('div', { class: 'match-lb', id: 'match-lb', text: this.lbText }));
+          this.centerInfo.append(el('div', { class: 'match-lb', id: 'match-lb', text: this.lbText() }));
         }
       }
     }
@@ -445,21 +508,12 @@ export class TableScreen {
         });
         seatEl.style.left = `${50 + x * 44}%`;
         seatEl.style.top = `${50 + y * 44}%`;
-        const badges = [];
-        if (s.seat === pub.dealerSeat) badges.push('D');
-        if (s.seat === pub.smallBlindSeat) badges.push('SB');
-        if (s.seat === pub.bigBlindSeat) badges.push('BB');
-        if (s.ai) badges.push('AI');
-        if (s.allIn) badges.push('ALL-IN');
-        if (s.folded) badges.push('FOLD');
-        if (s.sittingOut) badges.push('OUT');
-        if (s.eliminated) badges.push('OUT');
-        if (s.disconnected) badges.push('OFFLINE');
+        const badges = seatBadges(s, pub);
         seatEl.append(
           el('div', { class: 'seat-title', text: this.seatDisplayName(s) }),
-          el('div', { class: 'seat-stack', text: s.stack.toLocaleString() }),
+          el('div', { class: 'seat-stack', text: num(s.stack) }),
           s.roundCommit > 0
-            ? el('div', { class: 'seat-bet', text: `bet ${s.roundCommit.toLocaleString()}` })
+            ? el('div', { class: 'seat-bet', text: t('bet {n}', { n: num(s.roundCommit) }) })
             : '',
           badges.length ? el('div', { class: 'seat-flags', text: badges.join(' ') }) : '',
           s.seat === pub.actingSeat ? el('div', { class: 'seat-timer' }) : '',
@@ -489,22 +543,17 @@ export class TableScreen {
       btn.disabled = !myTurn;
     }
     this.amountInput.disabled = !myTurn;
+    labelActionBar(this, la, pub);
 
     if (!myTurn) {
-      this.checkCallBtn.textContent = 'Check / Call';
-      this.betRaiseBtn.textContent = 'Bet / Raise';
       this.amountLabel.textContent = '';
       return;
     }
 
     this.foldBtn.disabled = !la.canFold;
-    this.checkCallBtn.textContent = la.callAmount > 0
-      ? `Call ${la.callAmount.toLocaleString()}`
-      : 'Check';
     this.checkCallBtn.disabled = !(la.canCheck || la.callAmount > 0);
 
     const canAggro = pub.currentBet === 0 ? la.canBet : la.canRaise;
-    this.betRaiseBtn.textContent = pub.currentBet === 0 ? 'Bet' : 'Raise to';
     this.betRaiseBtn.disabled = !canAggro;
     this.allInBtn.disabled = la.canAllIn === false || la.maximumAmount <= 0;
 
@@ -540,7 +589,8 @@ export class TableScreen {
 
   showError(message) {
     if (!this.errorLine) return;
-    this.errorLine.textContent = message;
+    this.lastError = message;
+    this.errorLine.textContent = serverMessage(message);
     this.errorLine.hidden = false;
     setTimeout(() => { if (this.errorLine) this.errorLine.hidden = true; }, 4000);
   }

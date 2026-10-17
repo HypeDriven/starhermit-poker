@@ -7,17 +7,8 @@
 // slug-specific keys. Production launches never see this panel.
 
 import { GAME } from './config.js';
+import { el, t } from './i18n.js';
 
-function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') node.className = v;
-    else if (k === 'text') node.textContent = v;
-    else node.setAttribute(k, v);
-  }
-  node.append(...children);
-  return node;
-}
 
 // onReady({ token, apiBase }) is called once a launch token has been minted
 // and cached. onError(message) renders into the panel's error line.
@@ -31,30 +22,29 @@ export function showAuthPanel(root, { onReady, error = null, onBack = null }) {
   });
   const slugInput = el('input', {
     id: 'dev-slug', type: 'text', spellcheck: 'false', value: GAME.defaultSlug,
-    placeholder: 'game uid (the <uid>.starhermit.com subdomain)',
+    i18nPlaceholder: 'game uid (the <uid>.starhermit.com subdomain)',
   });
   const jwtInput = el('textarea', {
     id: 'dev-jwt', rows: '4', spellcheck: 'false',
-    placeholder: 'Paste a full StarHermit platform JWT (local dev only)',
+    i18nPlaceholder: 'Paste a full StarHermit platform JWT (local dev only)',
   });
   const errorLine = el('p', { class: 'error', id: 'dev-error', text: error || '' });
   if (!error) errorLine.hidden = true;
-  const submit = el('button', { class: 'primary', type: 'button', text: 'Mint launch token' });
+  const submit = el('button', { class: 'primary', type: 'button', i18n: 'Mint launch token' });
 
   const form = el('div', { class: 'auth-panel' },
-    el('h2', { text: 'Local development sign-in' }),
+    el('h2', { i18n: 'Local development sign-in' }),
     el('p', {
       class: 'muted',
-      text: 'No #game_token launch detected. In production the platform launcher ' +
-        'hands the game a launch token; for local development, mint one yourself.',
+      i18n: 'No #game_token launch detected. In production the platform launcher hands the game a launch token; for local development, mint one yourself.',
     }),
-    el('label', { for: 'dev-api-base', text: 'API base' }), apiBaseInput,
-    el('label', { for: 'dev-slug', text: 'Game uid' }), slugInput,
-    el('label', { for: 'dev-jwt', text: 'Platform JWT' }), jwtInput,
+    el('label', { for: 'dev-api-base', i18n: 'API base' }), apiBaseInput,
+    el('label', { for: 'dev-slug', i18n: 'Game uid' }), slugInput,
+    el('label', { for: 'dev-jwt', i18n: 'Platform JWT' }), jwtInput,
     submit, errorLine,
   );
   if (onBack) {
-    const back = el('button', { type: 'button', text: 'Back to menu' });
+    const back = el('button', { type: 'button', i18n: 'Back to menu' });
     back.addEventListener('click', onBack);
     form.append(back);
   }
@@ -66,7 +56,7 @@ export function showAuthPanel(root, { onReady, error = null, onBack = null }) {
     const userJwt = jwtInput.value.trim();
     errorLine.hidden = true;
     if (!apiBase || !slug || !userJwt) {
-      errorLine.textContent = 'All three fields are required.';
+      errorLine.textContent = t('All three fields are required.');
       errorLine.hidden = false;
       return;
     }
@@ -85,7 +75,7 @@ export function showAuthPanel(root, { onReady, error = null, onBack = null }) {
       sessionStorage.setItem(GAME.dev.gameTokenKey, data.token);
       onReady({ token: data.token, apiBase });
     } catch (e) {
-      errorLine.textContent = `Could not mint a launch token: ${e.message || e}`;
+      errorLine.textContent = t('Could not mint a launch token: {error}', { error: e.message || e });
       errorLine.hidden = false;
     } finally {
       submit.disabled = false;

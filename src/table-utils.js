@@ -1,5 +1,7 @@
 // Pure table-UI helpers (no three.js / DOM dependencies — unit-testable).
 
+import { t, num } from './i18n.js';
+
 // Seat visual order: the player's own seat sits at the bottom center.
 export function seatVisual(seatIndex, youSeat, seatCount = 6) {
   return (seatIndex - youSeat + seatCount) % seatCount;
@@ -27,22 +29,28 @@ export function visibleCardsForSeat(seat, you) {
 // "raised N". seat === -1 marks a street transition.
 export function describeLogEntry(entry, seats) {
   const [, , seat, action, amount] = entry;
-  if (seat === -1) return `The ${action.replace('street-', '')} was dealt.`;
-  const raw = seats && seats[seat] ? seats[seat].name : `Seat ${seat + 1}`;
+  if (seat === -1) return t('street-dealt.' + action.replace('street-', ''));
+  const raw = seats && seats[seat] ? seatName(seats[seat]) : t('Seat {n}', { n: seat + 1 });
   const name = raw.charAt(0).toUpperCase() + raw.slice(1);
-  const chips = Number(amount || 0).toLocaleString();
+  const chips = num(amount);
   switch (action) {
-    case 'fold': return `${name} folded.`;
-    case 'timeout-fold': return `${name} ran out of time and folded.`;
-    case 'check': return `${name} checked.`;
-    case 'timeout-check': return `${name} ran out of time and checked.`;
-    case 'call': return `${name} called ${chips}.`;
-    case 'bet': return `${name} bet ${chips}.`;
-    case 'raise': return `${name} raised ${chips}.`;
-    case 'all-in': return `${name} went all-in.`;
-    case 'blind': return `${name} posted a blind of ${chips}.`;
+    case 'fold': return t('{name} folded.', { name });
+    case 'timeout-fold': return t('{name} ran out of time and folded.', { name });
+    case 'check': return t('{name} checked.', { name });
+    case 'timeout-check': return t('{name} ran out of time and checked.', { name });
+    case 'call': return t('{name} called {chips}.', { name, chips });
+    case 'bet': return t('{name} bet {chips}.', { name, chips });
+    case 'raise': return t('{name} raised {chips}.', { name, chips });
+    case 'all-in': return t('{name} went all-in.', { name });
+    case 'blind': return t('{name} posted a blind of {chips}.', { name, chips });
     default: return `${name} ${action}${amount ? ` ${chips}` : ''}.`;
   }
+}
+
+// A seat's display name: the offline player's own seat is "You" in the
+// game language; everyone else keeps their (nick)name.
+export function seatName(seat) {
+  return seat && seat.userId === 'local-player' ? t('You') : (seat && seat.name) || '';
 }
 
 // Bet-sizing preset → NEW ROUND TOTAL (the table-wide raise convention).

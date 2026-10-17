@@ -68,7 +68,7 @@ test('standalone: no token means no request and no sign-in off-platform', async 
 });
 
 test('sign-in is offered on <id>.starhermit.com without a token', () => {
-  const h = install('https://pk-slug.starhermit.com/');
+  const h = install('https://2f6c1a9e-4b7d-4e21-9c3a-8d5e6f7a0b1c.starhermit.com/'); // game uid host
   captureLaunchCredentials();
   assert.equal(globalThis.StarHermit.canSignIn(), true);
   assert.equal(h.calls.length, 0);

@@ -17,10 +17,10 @@ class FakeWS {
 }
 globalThis.WebSocket = FakeWS;
 
-const { createNetContext, ReconnectingSocket } = await import('../src/net.js');
+const { createNetContext, ReconnectingSocket, ApiClient } = await import('../src/net.js');
 const { GameSocket } = await import('../src/game-socket.js');
 const { RoomController } = await import('../src/realtime-room.js');
-const { signedOutMenu, PLATFORM_LOCALES } = await import('../src/platform-i18n.js');
+const { signedOutMenu, termsRequiredMenu, PLATFORM_LOCALES } = await import('../src/platform-i18n.js');
 
 const holder = {};
 new Function('self', 'module', readFileSync(new URL('../starhermit-sdk.js', import.meta.url), 'utf8'))(holder, undefined);
@@ -30,15 +30,21 @@ const tok = (v) => `h.${b64u({ sub: 'user-0011aabb', game_scope: 'pk-slug', exp:
 const OLD = tok(1);
 const NEW = tok(2);
 
-// renewal: 'ok' → new token, 'flaky' → 503, 'refused' → 401
-function setup(renewal) {
+// renewal: 'ok' → new token, 'flaky' → 503, 'refused' → 401, 'terms' → 403
+// terms_acceptance_required. rest: path → [status, body] for the REST checks
+// made before a reopen (session / room still there?); default: active / Lobby.
+function setup(renewal, rest = {}) {
   const calls = [];
   const fetch = async (url, init = {}) => {
     calls.push(`${init.method || 'GET'} ${url}`);
     if (url.endsWith('/launch-token')) {
       if (renewal === 'ok') return new Response(JSON.stringify({ token: NEW }), { status: 200 });
+      if (renewal === 'terms') return new Response(JSON.stringify({ error: 'terms_acceptance_required' }), { status: 403 });
       return new Response('', { status: renewal === 'refused' ? 401 : 503 });
     }
+    if (rest[url]) return new Response(JSON.stringify(rest[url][1]), { status: rest[url][0] });
+    if (/\/sessions\/[^/]+$/.test(url)) return new Response(JSON.stringify({ sessionId: 'x', status: 'active' }), { status: 200 });
+    if (/\/realtime\/rooms\/[^/]+$/.test(url)) return new Response(JSON.stringify({ id: 'x', status: 'Lobby' }), { status: 200 });
     return new Response('', { status: 404 });
   };
   const loc = { hash: `#game_token=${OLD}`, search: '', pathname: '/', origin: 'https://poker.test', hostname: 'poker.test', href: `https://poker.test/#game_token=${OLD}` };
@@ -46,7 +52,8 @@ function setup(renewal) {
   const sdk = SDK.create({ window: win, fetch, setTimeout: () => 0, clearTimeout: () => {} });
   sdk.init();
   globalThis.StarHermit = sdk;
-  const net = createNetContext({ token: sdk.token, sdk });
+  const api = new ApiClient({ getToken: () => sdk.token, fetchImpl: fetch });
+  const net = createNetContext({ token: sdk.token, sdk, api });
   FakeWS.instances = [];
   return { calls, sdk, net, win };
 }
@@ -139,4 +146,83 @@ test('session-expired strings exist in all nine locales', () => {
   }
   assert.notEqual(signedOutMenu({ reason: 'expired' }, { relaunch: () => true }, 'de-DE').notice,
     signedOutMenu({ reason: 'expired' }, { relaunch: () => true }, 'en-US').notice);
+});
+
+test("'terms-required' stops the game socket and surfaces the terms notice", async () => {
+  const { calls, net, sdk, win } = setup('terms');
+  const terms = [];
+  sdk.on('termsrequired', (b) => terms.push(b));
+  let stopped = 0, lost = 0;
+  const gs = new GameSocket(net, 'session-1', { onTermsRequired: () => { stopped++; }, onAuthLost: () => { lost++; } }, { minIntervalMs: 0 });
+  gs.socket.backoff = () => 0;
+  gs.connect();
+  FakeWS.instances[0].open(); FakeWS.instances[0].drop();
+  await settle();
+  assert.equal(renewals(calls), 1);
+  assert.equal(stopped, 1);
+  assert.equal(lost, 0, 'not treated as an expired session');
+  assert.equal(terms.length, 1, 'the SDK emitted termsrequired (app.js shows the terms menu)');
+  assert.equal(FakeWS.instances.length, 1, 'never reopened');
+  const menu = termsRequiredMenu(sdk, 'en-US');
+  assert.match(menu.notice, /terms/);
+  assert.match(menu.noticeFn(), /terms/);
+  assert.equal(menu.onRelaunch(), true);
+  assert.ok(win.assigned, 'Back to StarHermit relaunches');
+  gs.destroy();
+});
+
+test("realtime room: 'terms-required' stops reconnecting", async () => {
+  const { net } = setup('terms');
+  let stopped = 0;
+  const ctl = new RoomController(net, { onTermsRequired: () => { stopped++; } });
+  ctl.connect('room-9');
+  ctl.socket.backoff = () => 0;
+  FakeWS.instances[0].open(); FakeWS.instances[0].drop();
+  await settle();
+  assert.equal(stopped, 1);
+  assert.equal(FakeWS.instances.length, 1);
+  ctl.destroy();
+});
+
+test('game socket: a session that is gone ends the reconnect loop (onUnavailable)', async () => {
+  const { net } = setup('ok', { '/api/v1/games/pk-slug/sessions/session-1': [404, { error: 'not found' }] });
+  let gone = 0;
+  const gs = new GameSocket(net, 'session-1', { onUnavailable: () => { gone++; } }, { minIntervalMs: 0 });
+  gs.socket.backoff = () => 0;
+  gs.connect();
+  FakeWS.instances[0].open(); FakeWS.instances[0].drop();
+  await settle();
+  assert.equal(gone, 1);
+  assert.equal(FakeWS.instances.length, 1, 'no reopen for a session that no longer exists');
+  gs.destroy();
+});
+
+test('realtime room: a Closed room ends the reconnect loop (onUnavailable)', async () => {
+  const { net } = setup('ok', { '/api/v1/realtime/rooms/room-9': [200, { id: 'room-9', status: 'Closed' }] });
+  let gone = 0;
+  const ctl = new RoomController(net, { onUnavailable: () => { gone++; } });
+  ctl.connect('room-9');
+  ctl.socket.backoff = () => 0;
+  FakeWS.instances[0].open(); FakeWS.instances[0].drop();
+  await settle();
+  assert.equal(gone, 1);
+  assert.equal(FakeWS.instances.length, 1);
+  ctl.destroy();
+});
+
+test('a network error during the availability check keeps reconnecting', async () => {
+  let token = 'a';
+  const sock = new ReconnectingSocket({
+    urlFactory: () => `wss://poker.test/ws?access_token=${token}`,
+    renew: async () => { token = 'b'; return 'renewed'; },
+    available: async () => { throw new TypeError('offline'); },
+    backoff: () => 0,
+    wsImpl: FakeWS,
+  });
+  FakeWS.instances = [];
+  sock.connect();
+  FakeWS.instances[0].drop();
+  await settle();
+  assert.equal(FakeWS.instances.length, 2);
+  sock.destroy();
 });

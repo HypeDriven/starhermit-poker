@@ -366,3 +366,8 @@ body[data-gfx-detail="detailed"] .pcard { background: linear-gradient(170deg, #f
 @media (pointer: coarse) {
   .bet-presets button, .settings-btn { min-height: 36px; }
 }
+
+/* Online play stopped (table/room no longer available). */
+.online-stop { background: var(--panel); border: 1px solid #c96a5a; border-radius: 10px; padding: .5rem .7rem;
+  margin: .4rem auto; max-width: 32rem; text-align: center; }
+.online-stop[hidden] { display: none; }

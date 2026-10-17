@@ -19,12 +19,13 @@
 <script src="browser-guard.js"></script>
 <script src="starhermit-sdk.js"></script>
 <script>StarHermit.init();</script>
+<script src="sh-language.js"></script>
 </head>
 <body>
   <div id="app">
     <div id="screen-boot" class="screen">
       <h1>StarHermit Poker</h1>
-      <p id="boot-status">Connecting…</p>
+      <p id="boot-status" data-i18n="Connecting…">Connecting…</p>
     </div>
     <!-- Screens are mounted here by src/app.js: lobby, table, leaderboard, replays -->
     <div id="screen-root"></div>

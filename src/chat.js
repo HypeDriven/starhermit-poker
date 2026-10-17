@@ -8,6 +8,7 @@
 // exists, so we dedupe by message id client-side. Display uses textContent
 // only — no HTML injection is possible.
 
+import { el, t } from './i18n.js';
 import { GAME } from './config.js';
 
 // ChatCore: transport + dedupe, no DOM (unit-testable).
@@ -49,7 +50,7 @@ export class ChatCore {
     const text = String(content || '').trim();
     if (!text || this.sending) return false;
     if (text.length > 2000) {
-      this.onError('Message is too long');
+      this.onError(t('Message is too long'));
       return false;
     }
     this.sending = true;
@@ -60,7 +61,7 @@ export class ChatCore {
       return true;
     } catch (e) {
       this.onError(e && e.status === 429
-        ? 'Slow down — chat is limited to 10 messages per minute'
+        ? t('Slow down — chat is limited to 10 messages per minute')
         : (e.message || String(e)));
       return false;
     } finally {
@@ -69,17 +70,6 @@ export class ChatCore {
   }
 }
 
-function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') node.className = v;
-    else if (k === 'text') node.textContent = v;
-    else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
-    else node.setAttribute(k, v);
-  }
-  node.append(...children);
-  return node;
-}
 
 // ChatPanel: DOM binding for ChatCore.
 export class ChatPanel {
@@ -87,7 +77,7 @@ export class ChatPanel {
   // plugs in here at checkpoint 16; defaults to the username).
   constructor(net, conversationId, { resolveName } = {}) {
     this.net = net;
-    this.resolveName = resolveName || ((id, username) => username || `Player ${String(id).slice(0, 8)}`);
+    this.resolveName = resolveName || ((id, username) => username || t('Player {id}', { id: String(id).slice(0, 8) }));
     this.core = new ChatCore(net.client, conversationId, {
       onMessages: (msgs) => this.renderMessages(msgs),
       onError: (m) => this.showError(m),
@@ -98,15 +88,15 @@ export class ChatPanel {
   mount(container) {
     this.list = el('div', { class: 'chat-list' });
     this.errorEl = el('div', { class: 'chat-error error small', hidden: '' });
-    this.input = el('input', { type: 'text', maxlength: '2000', placeholder: 'Message…', 'aria-label': 'Chat message' });
-    this.sendBtn = el('button', { type: 'button', text: 'Send' });
+    this.input = el('input', { type: 'text', maxlength: '2000', i18nPlaceholder: 'Message…', i18nAria: 'Chat message' });
+    this.sendBtn = el('button', { type: 'button', i18n: 'Send' });
     const send = () => this.send();
     this.sendBtn.addEventListener('click', send);
     this.input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') send();
     });
     this.panel = el('div', { class: 'chat-panel' },
-      el('div', { class: 'chat-title muted small', text: 'Table chat' }),
+      el('div', { class: 'chat-title muted small', i18n: 'Table chat' }),
       this.list, this.errorEl,
       el('div', { class: 'chat-input-row' }, this.input, this.sendBtn));
     container.append(this.panel);

@@ -9,6 +9,7 @@
 // Voice setup never blocks gameplay; any failure just disables voice.
 
 import { wsUrl } from './net.js';
+import { t } from './i18n.js';
 
 // ---------------------------------------------------------------------------
 // Pure signaling helpers (unit-tested)
@@ -53,7 +54,7 @@ export class VoiceController {
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     } catch {
-      this.handlers.onError && this.handlers.onError('Microphone access denied');
+      this.handlers.onError && this.handlers.onError(t('Microphone access denied'));
       return;
     }
     try {
@@ -72,7 +73,7 @@ export class VoiceController {
       this.handlers.onState && this.handlers.onState(true);
       this.startSpeakingDetection();
     } catch (e) {
-      this.handlers.onError && this.handlers.onError(`Voice unavailable: ${e.message || e}`);
+      this.handlers.onError && this.handlers.onError(t('Voice unavailable: {error}', { error: e.message || e }));
       this.disable();
     }
   }

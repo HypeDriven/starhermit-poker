@@ -5,18 +5,7 @@
 // into the shared ReplayEngine.
 
 import { ReplayEngine, REPLAY_SPEEDS } from './replay-engine.js';
-
-function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') node.className = v;
-    else if (k === 'text') node.textContent = v;
-    else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
-    else node.setAttribute(k, v);
-  }
-  node.append(...children);
-  return node;
-}
+import { el, t, num } from './i18n.js';
 
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const SUIT_GLYPHS = ['♣', '♦', '♥', '♠'];
@@ -38,35 +27,46 @@ export class ReplayListScreen {
   async show() {
     const { root, net } = this.ctx;
     root.textContent = '';
-    const status = el('p', { class: 'muted', text: 'Loading…' });
-    const list = el('div', { class: 'replay-list' });
+    this.status = el('p', { class: 'muted', i18n: 'Loading…' });
+    this.list = el('div', { class: 'replay-list' });
     root.append(el('div', { class: 'screen' },
-      el('h1', { text: 'Replays' }), status, list,
-      el('button', { type: 'button', text: 'Back', onclick: () => this.ctx.onBack() })));
+      el('h1', { i18n: 'Replays' }), this.status, this.list,
+      el('button', { type: 'button', i18n: 'Back', onclick: () => this.ctx.onBack() })));
     try {
-      const items = await net.client.get(
+      this.items = await net.client.get(
         `/api/v1/games/${net.scope}/replays/mine?limit=20`) || [];
-      status.textContent = items.length ? '' : 'No finished matches yet.';
-      for (const r of items) {
-        const names = (r.players || []).map((p) => {
-          net.profiles.profile(p.userId);
-          return net.profiles.displayName(p.userId, p.username);
-        }).join(' vs ');
-        const result = r.result
-          ? `${r.result.winnerName || 'Winner'} won · ${r.result.hands ?? '?'} hands`
-          : 'finished';
-        list.append(el('button', {
-          type: 'button', class: 'replay-row',
-          onclick: () => this.ctx.onOpenReplay(r.sessionId),
-        },
-          el('span', { text: names }),
-          el('span', { class: 'muted small', text: `${result} · ${String(r.finishedAt || '').slice(0, 10)}` }),
-        ));
-      }
+      this.renderList();
     } catch (e) {
-      status.textContent = `Could not load replays: ${e.message || e}`;
+      this.status.removeAttribute('data-i18n');
+      this.status.textContent = t('Could not load replays: {error}', { error: e.message || e });
     }
   }
+
+  renderList() {
+    const { net } = this.ctx;
+    const items = this.items || [];
+    this.status.removeAttribute('data-i18n');
+    this.status.textContent = items.length ? '' : t('No finished matches yet.');
+    this.list.textContent = '';
+    for (const r of items) {
+      const names = (r.players || []).map((p) => {
+        net.profiles.profile(p.userId);
+        return net.profiles.displayName(p.userId, p.username);
+      }).join(t(' vs '));
+      const result = r.result
+        ? t('{name} won · {n} hands', { name: r.result.winnerName || t('Winner'), n: r.result.hands ?? '?' })
+        : t('finished');
+      this.list.append(el('button', {
+        type: 'button', class: 'replay-row',
+        onclick: () => this.ctx.onOpenReplay(r.sessionId),
+      },
+        el('span', { text: names }),
+        el('span', { class: 'muted small', text: `${result} · ${String(r.finishedAt || '').slice(0, 10)}` }),
+      ));
+    }
+  }
+
+  relocalize() { if (this.items) this.renderList(); }
 
   destroy() {}
 }
@@ -85,25 +85,39 @@ export class ReplayScreen {
   async show() {
     const { root, net, sessionId } = this.ctx;
     root.textContent = '';
-    this.status = el('p', { class: 'muted', text: 'Loading replay…' });
+    this.status = el('p', { class: 'muted', i18n: 'Loading replay…' });
     this.stage = el('div', { class: 'replay-stage' });
-    root.append(el('div', { class: 'screen' }, el('h1', { text: 'Replay' }), this.status, this.stage));
+    root.append(el('div', { class: 'screen' }, el('h1', { i18n: 'Replay' }), this.status, this.stage));
     try {
       const data = await net.client.get(
         `/api/v1/games/${net.scope}/replays/${sessionId}`);
       const rules = globalThis.pokerRules;
-      if (!data || !data.state || !rules) throw new Error('Replay unavailable');
+      if (!data || !data.state || !rules) throw new Error(t('Replay unavailable'));
       this.engine = new ReplayEngine(data.state, rules);
       this.result = data.result || (data.state && data.state.matchResult);
       this.buildViewer();
     } catch (e) {
-      this.status.textContent = `Could not load the replay: ${e.message || e}`;
+      this.status.removeAttribute('data-i18n');
+      this.status.textContent = t('Could not load the replay: {error}', { error: e.message || e });
     }
   }
 
-  buildViewer() {
+  relocalize() {
+    if (!this.engine) return;
+    this.renderStatus();
+    this.handLabel.textContent = t('Hand {n}/{total}', { n: this.handIdx + 1, total: this.engine.handCount() });
+    this.playBtn.textContent = this.playing ? t('⏸ Pause') : t('▶ Play');
+    this.renderStep();
+  }
+
+  renderStatus() {
+    this.status.removeAttribute('data-i18n');
     this.status.textContent = this.result
-      ? `${this.result.winnerName || 'Winner'} won · ${this.engine.handCount()} hands` : '';
+      ? t('{name} won · {n} hands', { name: this.result.winnerName || t('Winner'), n: this.engine.handCount() }) : '';
+  }
+
+  buildViewer() {
+    this.renderStatus();
     this.boardEl = el('div', { class: 'replay-board' });
     this.potEl = el('div', { class: 'pot-display' });
     this.seatsEl = el('div', { class: 'replay-seats' });
@@ -111,17 +125,17 @@ export class ReplayScreen {
     this.handLabel = el('span', { class: 'muted' });
 
     const nav = el('div', { class: 'replay-nav' },
-      el('button', { type: 'button', text: '⏮ First', onclick: () => this.goHand(0) }),
-      el('button', { type: 'button', text: '‹ Hand', onclick: () => this.goHand(this.handIdx - 1) }),
+      el('button', { type: 'button', i18n: '⏮ First', onclick: () => this.goHand(0) }),
+      el('button', { type: 'button', i18n: '‹ Hand', onclick: () => this.goHand(this.handIdx - 1) }),
       this.handLabel,
-      el('button', { type: 'button', text: 'Hand ›', onclick: () => this.goHand(this.handIdx + 1) }),
-      el('button', { type: 'button', text: 'Last ⏭', onclick: () => this.goHand(this.engine.handCount() - 1) }),
+      el('button', { type: 'button', i18n: 'Hand ›', onclick: () => this.goHand(this.handIdx + 1) }),
+      el('button', { type: 'button', i18n: 'Last ⏭', onclick: () => this.goHand(this.engine.handCount() - 1) }),
     );
     const steps = el('div', { class: 'replay-nav' },
-      el('button', { type: 'button', text: '‹', onclick: () => this.goStep(this.stepIdx - 1) }),
-      this.playBtn = el('button', { type: 'button', text: '▶ Play', onclick: () => this.togglePlay() }),
-      el('button', { type: 'button', text: '›', onclick: () => this.goStep(this.stepIdx + 1) }),
-      this.speedSelect = el('select', {},
+      el('button', { type: 'button', text: '‹', i18nAria: 'Previous step', onclick: () => this.goStep(this.stepIdx - 1) }),
+      this.playBtn = el('button', { type: 'button', text: t('▶ Play'), onclick: () => this.togglePlay() }),
+      el('button', { type: 'button', text: '›', i18nAria: 'Next step', onclick: () => this.goStep(this.stepIdx + 1) }),
+      this.speedSelect = el('select', { i18nAria: 'Replay speed' },
         ...REPLAY_SPEEDS.map((s) => el('option', { value: String(s), text: `${s}×` }))),
     );
     this.speedSelect.value = '1';
@@ -132,7 +146,7 @@ export class ReplayScreen {
 
     this.stage.append(
       this.potEl, this.boardEl, this.seatsEl, this.stepLabel, nav, steps,
-      el('button', { type: 'button', text: 'Back', onclick: () => this.ctx.onBack() }));
+      el('button', { type: 'button', i18n: 'Back', onclick: () => this.ctx.onBack() }));
     this.goHand(0);
   }
 
@@ -140,7 +154,7 @@ export class ReplayScreen {
     this.handIdx = Math.max(0, Math.min(idx, this.engine.handCount() - 1));
     this.steps = this.engine.stepsForHand(this.handIdx);
     this.stepIdx = 0;
-    this.handLabel.textContent = `Hand ${this.handIdx + 1}/${this.engine.handCount()}`;
+    this.handLabel.textContent = t('Hand {n}/{total}', { n: this.handIdx + 1, total: this.engine.handCount() });
     this.renderStep();
   }
 
@@ -158,7 +172,7 @@ export class ReplayScreen {
 
   togglePlay() {
     this.playing = !this.playing;
-    this.playBtn.textContent = this.playing ? '⏸ Pause' : '▶ Play';
+    this.playBtn.textContent = this.playing ? t('⏸ Pause') : t('▶ Play');
     this.startTimer();
   }
 
@@ -172,8 +186,8 @@ export class ReplayScreen {
 
   renderStep() {
     const step = this.steps[this.stepIdx];
-    this.potEl.textContent = `Pot ${step.pot.toLocaleString()}`;
-    this.stepLabel.textContent = step.label;
+    this.potEl.textContent = t('Pot {n}', { n: num(step.pot) });
+    this.stepLabel.textContent = typeof step.label === 'function' ? step.label() : step.label;
     this.boardEl.textContent = '';
     for (const c of step.board) this.boardEl.append(cardEl(c));
     const equity = this.engine.equityForStep(this.handIdx, step);
@@ -188,10 +202,10 @@ export class ReplayScreen {
         class: 'replay-seat' + (i === step.activeSeat ? ' acting' : ''),
       },
         el('span', { class: 'seat-title', text: meta.name }),
-        el('span', { class: 'seat-stack', text: step.stacks[i].toLocaleString() }),
-        step.commits[i] > 0 ? el('span', { class: 'seat-bet', text: `in for ${step.commits[i]}` }) : '',
+        el('span', { class: 'seat-stack', text: num(step.stacks[i]) }),
+        step.commits[i] > 0 ? el('span', { class: 'seat-bet', text: t('in for {n}', { n: num(step.commits[i]) }) }) : '',
         cards ? el('span', { class: `replay-cards${folded ? ' dim' : ''}` }, ...cards.map(cardEl)) : '',
-        pct !== null ? el('span', { class: 'seat-equity', text: `${pct}% to win` }) : '',
+        pct !== null ? el('span', { class: 'seat-equity', text: t('{pct}% to win', { pct }) }) : '',
       ));
     });
   }

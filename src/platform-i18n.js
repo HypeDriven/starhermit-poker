@@ -1,6 +1,8 @@
 // StarHermit Poker — strings for the StarHermit account controls (sign-in, invite,
-// sign-out notice, session-expired relaunch), in the nine supported locales. Follows the browser
-// language.
+// sign-out notice, session-expired / terms relaunch), in the nine supported
+// locales. Follows the game language (i18n.js).
+
+import { getLocale } from './i18n.js';
 
 const EN_US = {
   signIn: "Sign in with StarHermit",
@@ -14,6 +16,7 @@ const EN_US = {
   lbPosting: "Posting to the leaderboard…",
   lbRank: "Leaderboard rank: #{rank}",
   lbPosted: "Win posted to the leaderboard.",
+  termsRequired: "StarHermit needs you to accept its updated terms, so online play stopped. Go back to StarHermit to review them, or keep playing offline.",
 };
 
 const STRINGS = {
@@ -31,6 +34,7 @@ const STRINGS = {
     lbPosting: "Publicando en la clasificación…",
     lbRank: "Puesto en la clasificación: #{rank}",
     lbPosted: "Victoria publicada en la clasificación.",
+    termsRequired: "StarHermit necesita que aceptes sus términos actualizados, así que el juego en línea se detuvo. Vuelve a StarHermit para revisarlos o sigue jugando sin conexión.",
   },
   "es-ES": {
     signIn: "Iniciar sesión con StarHermit",
@@ -44,6 +48,7 @@ const STRINGS = {
     lbPosting: "Publicando en la clasificación…",
     lbRank: "Puesto en la clasificación: #{rank}",
     lbPosted: "Victoria publicada en la clasificación.",
+    termsRequired: "StarHermit necesita que aceptes sus términos actualizados, así que el juego en línea se ha detenido. Vuelve a StarHermit para revisarlos o sigue jugando sin conexión.",
   },
   "de-DE": {
     signIn: "Mit StarHermit anmelden",
@@ -57,6 +62,7 @@ const STRINGS = {
     lbPosting: "Wird in die Bestenliste eingetragen …",
     lbRank: "Platz in der Bestenliste: #{rank}",
     lbPosted: "Sieg in die Bestenliste eingetragen.",
+    termsRequired: "StarHermit braucht deine Zustimmung zu den aktualisierten Nutzungsbedingungen, daher wurde das Online-Spiel beendet. Kehre zu StarHermit zurück, um sie zu prüfen, oder spiele offline weiter.",
   },
   "fr-FR": {
     signIn: "Se connecter avec StarHermit",
@@ -70,6 +76,7 @@ const STRINGS = {
     lbPosting: "Envoi au classement…",
     lbRank: "Rang au classement : #{rank}",
     lbPosted: "Victoire inscrite au classement.",
+    termsRequired: "StarHermit a besoin que vous acceptiez ses conditions mises à jour : le jeu en ligne s’est arrêté. Retournez sur StarHermit pour les consulter, ou continuez à jouer hors ligne.",
   },
   "fr-CA": {
     signIn: "Se connecter avec StarHermit",
@@ -83,6 +90,7 @@ const STRINGS = {
     lbPosting: "Envoi au classement…",
     lbRank: "Rang au classement : #{rank}",
     lbPosted: "Victoire inscrite au classement.",
+    termsRequired: "StarHermit a besoin que vous acceptiez ses conditions mises à jour : le jeu en ligne s’est arrêté. Retournez sur StarHermit pour les consulter, ou continuez à jouer hors ligne.",
   },
   "pt-BR": {
     signIn: "Entrar com StarHermit",
@@ -96,6 +104,7 @@ const STRINGS = {
     lbPosting: "Enviando para o ranking…",
     lbRank: "Posição no ranking: #{rank}",
     lbPosted: "Vitória registrada no ranking.",
+    termsRequired: "O StarHermit precisa que você aceite os termos atualizados, então o jogo online parou. Volte ao StarHermit para revisá-los ou continue jogando offline.",
   },
   "it-IT": {
     signIn: "Accedi con StarHermit",
@@ -109,6 +118,7 @@ const STRINGS = {
     lbPosting: "Invio alla classifica…",
     lbRank: "Posizione in classifica: #{rank}",
     lbPosted: "Vittoria registrata in classifica.",
+    termsRequired: "StarHermit ha bisogno che tu accetti i termini aggiornati, quindi il gioco online si è interrotto. Torna su StarHermit per leggerli o continua a giocare offline.",
   },
 };
 
@@ -139,11 +149,9 @@ export function platformStrings(locale) {
   return STRINGS[locale] || EN_US;
 }
 
-/** Strings for the browser's language (or an explicit locale). */
+/** Strings for the game language (or an explicit locale). */
 export function currentPlatformStrings(locale) {
-  if (locale) return platformStrings(pickPlatformLocale(locale));
-  const langs = typeof navigator !== "undefined" ? (navigator.languages || [navigator.language]) : [];
-  return platformStrings(pickPlatformLocale(langs));
+  return platformStrings(pickPlatformLocale(locale || getLocale()));
 }
 
 /**
@@ -152,9 +160,24 @@ export function currentPlatformStrings(locale) {
  * session expired — only a fresh launch from StarHermit can mint a new token.
  */
 export function signedOutMenu(auth, sh, locale) {
-  const t = currentPlatformStrings(locale);
+  // notice: the text now; noticeFn: the text in the current game language
+  // (the menu re-reads it after a language change).
+  const t = () => currentPlatformStrings(locale);
   if (auth && auth.reason === "expired" && sh && typeof sh.relaunch === "function") {
-    return { notice: t.expired, onRelaunch: () => !!sh.relaunch() };
+    return { notice: t().expired, noticeFn: () => t().expired, onRelaunch: () => !!sh.relaunch() };
   }
-  return { notice: t.signedOut };
+  return { notice: t().signedOut, noticeFn: () => t().signedOut };
+}
+
+/**
+ * Local-menu additions when online play stopped because the player must
+ * accept updated StarHermit terms: the notice plus "Back to StarHermit".
+ */
+export function termsRequiredMenu(sh, locale) {
+  const t = () => currentPlatformStrings(locale);
+  return {
+    notice: t().termsRequired,
+    noticeFn: () => t().termsRequired,
+    ...(sh && typeof sh.relaunch === "function" ? { onRelaunch: () => !!sh.relaunch() } : {}),
+  };
 }

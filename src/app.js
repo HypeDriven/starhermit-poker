@@ -14,10 +14,11 @@
 // Screens are mounted into #screen-root; every screen owns its timers and
 // sockets and must release them in destroy().
 
+import { t, onLocaleChange } from './i18n.js';
 import { GAME } from './config.js';
 import { captureLaunchCredentials, createNetContext, starhermit } from './net.js';
 import { loadPlatformPrefs } from './platform-prefs.js';
-import { currentPlatformStrings, signedOutMenu } from './platform-i18n.js';
+import { signedOutMenu, termsRequiredMenu } from './platform-i18n.js';
 import { showAuthPanel, clearDevToken } from './auth-panel.js';
 import { RoomController } from './realtime-room.js';
 import { MenuScreen, LobbyScreen } from './lobby.js';
@@ -31,9 +32,9 @@ import { graphics } from './gfx-settings.js';
 const bootScreen = () => document.getElementById('screen-boot');
 const screenRoot = () => document.getElementById('screen-root');
 
-function setBootStatus(text) {
+function setBootStatus(key) {
   const el = document.getElementById('boot-status');
-  if (el) el.textContent = text;
+  if (el) { el.dataset.i18n = key; el.textContent = t(key); }
 }
 
 function leaveBootScreen() {
@@ -41,6 +42,7 @@ function leaveBootScreen() {
   if (el) el.hidden = true;
 }
 
+// message: a function returning the text in the current language.
 function showFatal(message) {
   leaveBootScreen();
   const root = screenRoot();
@@ -48,11 +50,13 @@ function showFatal(message) {
   const box = document.createElement('div');
   box.className = 'auth-panel';
   const h = document.createElement('h2');
-  h.textContent = 'Cannot start';
   const p = document.createElement('p');
-  p.textContent = message;
+  const fill = () => { h.textContent = t('Cannot start'); p.textContent = message(); };
+  fill();
   box.append(h, p);
   root.append(box);
+  if (currentScreen && currentScreen.destroy) currentScreen.destroy();
+  currentScreen = { relocalize: fill };
 }
 
 // ---------------------------------------------------------------------------
@@ -150,15 +154,13 @@ async function bootWithToken(token, apiBase, { production, deepLinkSessionId }) 
     await enterApp(net, gameInfo, { production, deepLinkSessionId });
   } catch (e) {
     if (production) {
-      showFatal(
-        'The platform rejected the launch token. Relaunch the game from StarHermit ' +
-        `to get a fresh one. (${e.message || e})`
-      );
+      const error = e.message || e;
+      showFatal(() => t('The platform rejected the launch token. Relaunch the game from StarHermit to get a fresh one. ({error})', { error }));
     } else {
       // Dev token expired or rejected: drop it and show the panel again.
       clearDevToken();
       showAuthPanel(screenRoot(), {
-        error: `Cached dev session was rejected (${e.message || e}). Mint a new token.`,
+        error: t('Cached dev session was rejected ({error}). Mint a new token.', { error: e.message || e }),
         onReady: ({ token: t, apiBase: base }) =>
           bootWithToken(t, base, { production: false, deepLinkSessionId: null }),
       });
@@ -195,6 +197,10 @@ function makeLocalCtx() {
 // drop back to the local menu (offline play keeps working; sign-in is offered
 // again where possible). An expired session also offers "Back to StarHermit",
 // which relaunches for a fresh launch token.
+//
+// Pending terms consent (a renewal answered 'terms-required', so every socket
+// stopped reconnecting) ends online play the same way, with the terms notice
+// and "Back to StarHermit": consent happens on StarHermit.
 function watchSignOut() {
   const sh = starhermit();
   if (!sh) return;
@@ -202,7 +208,19 @@ function watchSignOut() {
     if (a.signedIn) return;
     switchScreen(new LocalMenuScreen({ ...makeLocalCtx(), ...signedOutMenu(a, sh) }));
   });
+  sh.on('termsrequired', () => {
+    if (currentScreen && currentScreen.termsStop) return; // already showing it
+    const screen = new LocalMenuScreen({ ...makeLocalCtx(), ...termsRequiredMenu(sh) });
+    screen.termsStop = true;
+    switchScreen(screen);
+  });
 }
+
+// Language change (Settings → Language): static labels re-apply through
+// data-i18n; the current screen re-renders its dynamic text in place.
+onLocaleChange(() => {
+  if (currentScreen && currentScreen.relocalize) currentScreen.relocalize();
+});
 
 function boot() {
   // Graphics settings: <body data-gfx-*> hooks and the optional FPS readout.

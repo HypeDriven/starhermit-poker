@@ -52,8 +52,10 @@ W×H px". Choosing a preset clears the overrides. Changes apply immediately
 and persist in `localStorage` (`poker.graphics`); `<body>` carries
 `data-gfx-preset`, `data-gfx-detail` and `data-gfx-background`. The panel is
 keyboard (focus trap, Escape closes), mouse and touch operable, scrolls inside
-itself on short screens, and is localized for en-US, en-GB, es-419, es-ES,
-de-DE, fr-FR, fr-CA, pt-BR and it-IT (from the browser language).
+itself on short screens, and follows the game Language setting (all nine
+locales); a language change relabels the open panel in place. The shared
+Sound, Language and Report sections (`game-options.js`) mount inside the
+Graphics section and stay mounted across a language change.
 
 ## Large screens
 
@@ -67,7 +69,7 @@ Above 1600×1000 the shared `ui-scale.js` sets `--ui-scale` (`min(w/1600, h/1000
 | `src/gfx-settings.js` | Settings store: GPU probe, `localStorage`, change listeners, `<body>` attributes, FPS readout |
 | `src/gfx-pipeline.js` | Shared three.js renderer/post-processing/adaptive-resolution pipeline and the grade shader |
 | `src/graphics-panel.js` | Settings button and the Settings → Graphics panel |
-| `src/gfx-i18n.js` | Graphics panel strings for the nine supported locales |
+| `src/gfx-i18n.js` | Graphics panel strings for the nine supported locales (in the game language) |
 | `tests/gfx.test.js` | Unit tests for the quality model and panel strings |
 
 ## StarHermit integration
@@ -82,8 +84,21 @@ Above 1600×1000 the shared `ui-scale.js` sets `--ui-scale` (`min(w/1600, h/1000
 - Every socket reconnect (gameplay `ws/v1/games` and the realtime-room
   socket) renews the launch token first via `StarHermit.renewForReconnect()`
   and reopens with a URL built from the current token; a transient renewal
-  failure keeps backing off (1 s → 30 s) without reopening the old URL. The
-  voice socket does not auto-reconnect (voice re-joins on the next enable).
+  failure keeps backing off (1 s → 30 s) without reopening the old URL. After
+  a successful renewal and before reopening, the socket checks over REST that
+  its target still exists: the game session (`GET …/sessions/{id}`, gone on
+  403/404/410 or a non-`active` status) or the room (`GET …/rooms/{id}`, gone
+  on 403/404/410 or `Closed`); a network error there keeps retrying. A gone
+  target ends the reconnect loop (`onUnavailable`): the table keeps its last
+  view, the status line reads "connection closed" and a notice says the table
+  is no longer available (leave it to return to the menu); the lobby shows the
+  same notice and disables Start. The voice socket does not auto-reconnect
+  (voice re-joins on the next enable).
+- When a renewal answers `terms-required` (the player must accept updated
+  StarHermit terms; the SDK emits `termsrequired`), every socket stops
+  reconnecting (`onTermsRequired`) and the game returns to the local menu with
+  "StarHermit needs you to accept its updated terms…" and **Back to
+  StarHermit** (`StarHermit.relaunch()`); offline play keeps working.
 - When renewal is refused the SDK signs out, sockets stop reconnecting and the
   game returns to the local menu with a notice; offline play keeps working.
   When the session expired the notice says so and a **Back to StarHermit**
@@ -99,7 +114,8 @@ Above 1600×1000 the shared `ui-scale.js` sets `--ui-scale` (`min(w/1600, h/1000
   use the same nickname rule.
 - Settings KV: the graphics settings (`graphics`) and the sound toggle
   (`soundEnabled`) are mirrored with `PATCH /settings` on change; on sign-in
-  the platform values win (`src/platform-prefs.js`).
+  the platform values win (`src/platform-prefs.js`). Platform-owned `ui.*`
+  keys (`ui.language`) are never treated as game settings.
 - Already platform-native (unchanged): realtime-room lobby with quick play,
   private tables, friends picker and room invites, the `ws/v1/games` gameplay
   socket, REST-polled session chat, voice, the Elo leaderboard, and replays.
@@ -115,7 +131,44 @@ Above 1600×1000 the shared `ui-scale.js` sets `--ui-scale` (`min(w/1600, h/1000
 - Not used: cloud save (all progress — Elo, stats — is script-owned player
   state), keyboard controls (play is pointer/touch only), achievements
   (`server.js` declares none), matchmaking queues (rooms handle seating).
-- Account strings are localized in the nine locales (`src/platform-i18n.js`).
+- Account strings are localized in the nine locales (`src/platform-i18n.js`)
+  and follow the game language.
+
+## Language
+
+Settings has one **Language** selector (shared `game-options.js` section,
+driven by `sh-language.js`, loaded before the app modules): Automatic or one of
+en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT. Resolution
+order: the explicit choice for this game → for Automatic the StarHermit
+account's preferred language (`GET /me/language`, signed in only) →
+`navigator.languages` → en-US. The choice is stored per player in
+localStorage and, signed in, in the platform setting `ui.language`
+(`{ choice }`). Every player-facing string — menus, help, lobby, table (action
+bar, seat badges, status line, feed, hand descriptions such as "Two Pair,
+Kings and Tens", rule rejections from `server.js`), chat, voice, leaderboard,
+replays, the dev sign-in panel, Graphics and account strings — comes from
+`src/i18n.js` / `src/strings.js` (the rules engine itself stays English; its
+messages are mapped on the client). Switching re-renders the visible screen in
+place: the menu card is rebuilt over the running 3D scene, the table relabels
+without being rebuilt, feed lines are re-rendered from their source events,
+and no socket, room or hand is touched. Numbers use the locale's grouping.
+
+## Report a problem and crash reports
+
+Signed in, Settings shows **Report a problem** (from `game-options.js`: title
+and optional details), filed through `StarHermit.reportBug` with a small
+non-personal `context.json` (viewport, language, FPS cap, audio limit);
+uncaught errors are filed as crash reports through `StarHermit.captureCrashes`
+(capped by the SDK). Standalone play shows no report section and makes no
+network calls.
+
+Tests: `tests/i18n.test.js` checks that every key used in markup and code
+exists in all nine locales with matching placeholders (plus hand-description,
+rule-message and feed rendering); `tests/reconnect.test.js` covers the
+terms-required and unavailable reconnect stops; `tests/e2e.mjs` runs the
+Language step (account fr-CA Automatic → German from the menu's Settings →
+`ui.language` → Report a problem, then German mid-hand at the offline table)
+at desktop and mobile sizes.
 
 ## Browser interference
 
@@ -124,4 +177,4 @@ Above 1600×1000 the shared `ui-scale.js` sets `--ui-scale` (`min(w/1600, h/1000
 
 ## Sound and frame-rate options
 
-The options panel includes Sound controls for master, music, effects and UI volume, a mute that preserves volume levels, and an Auto or manual concurrent-sound limit (1–64). Changes apply immediately with perceptual volume curves. A shared allocator bounds Web Audio and media playback, including loops and scheduled sources. Graphics includes Auto display refresh or a custom maximum frame rate from 1–1000 FPS; rendering is paced independently of simulation and input. Preferences persist locally, with FPS stored per detected GPU, and reconcile with Starhermit settings when signed in. The controls support keyboard and touch input and the supported English, Spanish, German, French, Portuguese and Italian locales.
+The options panel includes Sound controls for master, music, effects and UI volume, a mute that preserves volume levels, and an Auto or manual concurrent-sound limit (1–64). Changes apply immediately with perceptual volume curves. A shared allocator bounds Web Audio and media playback, including loops and scheduled sources. Graphics includes Auto display refresh or a custom maximum frame rate from 1–1000 FPS; rendering is paced independently of simulation and input. Preferences persist locally, with FPS stored per detected GPU, and reconcile with Starhermit settings when signed in. The controls support keyboard and touch input and follow the Language setting.

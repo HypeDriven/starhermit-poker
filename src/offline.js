@@ -7,9 +7,10 @@
 
 import { currentPlatformStrings } from './platform-i18n.js';
 import { GAME } from './config.js';
-import { seatVisual, seatUnit, presetTotal, describeLogEntry, keepSeatInStage } from './table-utils.js';
-import { cardEl, describeHandComplete } from './table.js';
+import { seatVisual, seatUnit, presetTotal, describeLogEntry, keepSeatInStage, seatName } from './table-utils.js';
+import { cardEl, describeHandComplete, describeMatchOver, seatBadges, tableStatus, labelActionBar } from './table.js';
 import { settingsButton, closeSettings } from './graphics-panel.js';
+import { el, t, num, serverMessage } from './i18n.js';
 
 const USER_ID = 'local-player';
 const AI_NAMES = ['Ada', 'Ben', 'Cleo', 'Dex', 'Eva'];
@@ -18,19 +19,8 @@ const REVEAL_WINDOW_MS = 8000;
 // The feed shows only the latest few lines — no scrolling, fits the screen.
 const FEED_CAP = 3;
 
-const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-
-function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') node.className = v;
-    else if (k === 'text') node.textContent = v;
-    else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
-    else node.setAttribute(k, v);
-  }
-  node.append(...children);
-  return node;
-}
+// The local player's display name in results (the script knows it as "You").
+const winnerLabel = (userId, name) => (userId === USER_ID ? t('You') : name);
 
 // ---------------------------------------------------------------------------
 // Local menu: the cold-load landing when no platform launch happened.
@@ -54,14 +44,28 @@ export class LocalMenuScreen {
       this.scene3d = new MenuScene3D(stage);
       if (this.scene3d.failed) this.scene3d = null;
     }).catch(() => { /* no 3D: the CSS background carries the menu */ });
-    root.append(el('div', { class: 'screen main-menu cinematic' },
+    this.card = this.buildCard();
+    root.append(this.card);
+  }
+
+  // Language change: rebuild the menu card in place (the 3D scene stays).
+  relocalize() {
+    if (this.destroyed || !this.card) return;
+    const old = this.card;
+    this.card = this.buildCard();
+    old.replaceWith(this.card);
+  }
+
+  buildCard() {
+    // noticeFn (preferred): the notice in the current language; notice: fixed text.
+    const notice = this.ctx.noticeFn ? this.ctx.noticeFn() : this.ctx.notice;
+    return el('div', { class: 'screen main-menu cinematic' },
       el('h1', { text: 'StarHermit Poker' }),
       el('p', {
         class: 'muted',
-        text: 'No-limit Texas Hold\'em. Play an offline table against five AI ' +
-          'opponents — no sign-in needed.',
+        i18n: 'No-limit Texas Hold\'em. Play an offline table against five AI opponents — no sign-in needed.',
       }),
-      ...(this.ctx.notice ? [el('p', { class: 'muted bold', role: 'status', text: this.ctx.notice })] : []),
+      ...(notice ? [el('p', { class: 'muted bold', role: 'status', text: notice })] : []),
       el('div', { class: 'menu-actions' },
         // Session expired: a fresh launch from StarHermit is the only way back
         // online. relaunch() navigates the launcher's top window, which needs
@@ -76,7 +80,7 @@ export class LocalMenuScreen {
           },
         })] : []),
         el('button', {
-          class: this.ctx.onRelaunch ? 'big' : 'primary big', type: 'button', text: 'Play',
+          class: this.ctx.onRelaunch ? 'big' : 'primary big', type: 'button', i18n: 'Play',
           onclick: () => this.ctx.onPlayOffline(),
         }),
         ...(this.ctx.canSignIn && this.ctx.canSignIn() ? [el('button', {
@@ -84,17 +88,16 @@ export class LocalMenuScreen {
           onclick: () => this.ctx.onSignIn(),
         })] : []),
         el('button', {
-          type: 'button', text: 'Multiplayer sign-in',
+          type: 'button', i18n: 'Multiplayer sign-in',
           onclick: () => this.ctx.onShowSignIn(),
         }),
         settingsButton(),
       ),
       el('p', {
         class: 'muted small',
-        text: 'Multiplayer is available when the game is launched from the ' +
-          'StarHermit platform, or via a development launch token.',
+        i18n: 'Multiplayer is available when the game is launched from the StarHermit platform, or via a development launch token.',
       }),
-    ));
+    );
   }
 
   destroy() {
@@ -142,7 +145,7 @@ export class LocalTableScreen {
   invoke(fn, extra = {}) {
     const engine = globalThis.game;
     if (!engine) {
-      this.showError('The game script (server.js) is not loaded.');
+      this.showError(t('The game script (server.js) is not loaded.'));
       return null;
     }
     const res = engine[fn]({
@@ -176,13 +179,14 @@ export class LocalTableScreen {
         this.gameState = msg;
         this.syncFeedFromLog(msg.publicState);
       } else if (msg.type === 'hand-started') {
-        this.pushEvent(`Hand #${msg.handNumber} began.`);
+        this.pushEvent(() => t('Hand #{n} began.', { n: msg.handNumber }));
       } else if (msg.type === 'hand-complete') {
-        this.pushEvent(describeHandComplete(msg), 'win');
+        const youSeat = this.gameState?.you?.seat;
+        this.pushEvent(() => describeHandComplete(msg, (w) => (w.seat === youSeat ? t('You') : null)), 'win');
         this.revealUntil = Date.now() + REVEAL_WINDOW_MS;
       } else if (msg.type === 'match-complete') {
-        const winner = msg.result && msg.result.winnerName;
-        this.pushEvent(winner ? `The match is over — ${cap(winner)} won.` : 'The match is over.', 'win');
+        const r = msg.result;
+        this.pushEvent(() => describeMatchOver(r && winnerLabel(r.winnerUserId, r.winnerName)), 'win');
       }
     }
     this.render();
@@ -239,21 +243,21 @@ export class LocalTableScreen {
     const stage = el('div', { class: 'table-stage game-board' },
       this.glContainer, this.seatOverlay, this.centerInfo);
 
-    this.foldBtn = el('button', { type: 'button', text: 'Fold', onclick: () => this.act('fold') });
+    this.foldBtn = el('button', { type: 'button', i18n: 'Fold', onclick: () => this.act('fold') });
     this.checkCallBtn = el('button', { type: 'button', onclick: () => this.actCheckCall() });
     this.betRaiseBtn = el('button', { class: 'primary', type: 'button', onclick: () => this.actBetRaise() });
-    this.allInBtn = el('button', { type: 'button', text: 'All-in', onclick: () => this.act('all-in') });
-    this.amountInput = el('input', { type: 'range', class: 'bet-slider', 'aria-label': 'Bet or raise total' });
+    this.allInBtn = el('button', { type: 'button', i18n: 'All-in', onclick: () => this.act('all-in') });
+    this.amountInput = el('input', { type: 'range', class: 'bet-slider', i18nAria: 'Bet or raise total' });
     this.amountLabel = el('span', { class: 'bet-amount' });
     this.presets = el('div', { class: 'bet-presets' });
     for (const [label, fn] of [
-      ['Min', () => this.preset('min')],
-      ['½ Pot', () => this.preset(0.5)],
-      ['¾ Pot', () => this.preset(0.75)],
-      ['Pot', () => this.preset(1)],
-      ['All-in', () => this.preset('all')],
+      ['preset.min', () => this.preset('min')],
+      ['preset.half', () => this.preset(0.5)],
+      ['preset.three-quarters', () => this.preset(0.75)],
+      ['preset.pot', () => this.preset(1)],
+      ['preset.all-in', () => this.preset('all')],
     ]) {
-      this.presets.append(el('button', { type: 'button', class: 'preset', text: label, onclick: fn }));
+      this.presets.append(el('button', { type: 'button', class: 'preset', i18n: label, onclick: fn }));
     }
 
     const actionBar = el('div', { class: 'action-bar' },
@@ -261,7 +265,7 @@ export class LocalTableScreen {
       el('div', { class: 'bet-controls' }, this.amountInput, this.amountLabel, this.presets));
 
     const leaveBtn = el('button', {
-      type: 'button', text: 'Leave table', onclick: () => this.ctx.onExitToMenu(),
+      type: 'button', i18n: 'Leave table', onclick: () => this.ctx.onExitToMenu(),
     });
 
     this.screen = el('div', { class: 'table-screen' },
@@ -297,14 +301,12 @@ export class LocalTableScreen {
     const pub = gs?.publicState;
     const you = gs?.you;
 
-    this.statusLine.textContent =
-      `Hand #${pub?.handNumber ?? '–'} · ${pub?.street ?? 'waiting'}` +
-      (pub?.matchResult ? ' · match over' : '');
+    this.statusLine.textContent = tableStatus(pub);
 
     this.centerInfo.textContent = '';
     if (pub) {
       this.centerInfo.append(
-        el('div', { class: 'pot-display', text: `Pot ${pub.pot.toLocaleString()}` }),
+        el('div', { class: 'pot-display', text: t('Pot {n}', { n: num(pub.pot) }) }),
       );
       if (pub.board && pub.board.length) {
         this.centerInfo.append(el('div', { class: 'board-cards' },
@@ -313,9 +315,9 @@ export class LocalTableScreen {
       if (pub.matchResult) {
         this.centerInfo.append(el('div', {
           class: 'match-result',
-          text: `Winner: ${pub.matchResult.winnerName || '–'}`,
+          text: t('Winner: {name}', { name: winnerLabel(pub.matchResult.winnerUserId, pub.matchResult.winnerName) || '–' }),
         }), el('button', {
-          class: 'primary', type: 'button', text: 'New match',
+          class: 'primary', type: 'button', i18n: 'New match',
           onclick: () => this.ctx.onRematch(),
         }));
       }
@@ -341,20 +343,12 @@ export class LocalTableScreen {
         });
         seatEl.style.left = `${50 + x * 44}%`;
         seatEl.style.top = `${50 + y * 44}%`;
-        const badges = [];
-        if (s.seat === pub.dealerSeat) badges.push('D');
-        if (s.seat === pub.smallBlindSeat) badges.push('SB');
-        if (s.seat === pub.bigBlindSeat) badges.push('BB');
-        if (s.ai) badges.push('AI');
-        if (s.allIn) badges.push('ALL-IN');
-        if (s.folded) badges.push('FOLD');
-        if (s.sittingOut) badges.push('OUT');
-        if (s.eliminated) badges.push('OUT');
+        const badges = seatBadges(s, pub, { offline: false });
         seatEl.append(
-          el('div', { class: 'seat-title', text: s.name }),
-          el('div', { class: 'seat-stack', text: s.stack.toLocaleString() }),
+          el('div', { class: 'seat-title', text: seatName(s) }),
+          el('div', { class: 'seat-stack', text: num(s.stack) }),
           s.roundCommit > 0
-            ? el('div', { class: 'seat-bet', text: `bet ${s.roundCommit.toLocaleString()}` })
+            ? el('div', { class: 'seat-bet', text: t('bet {n}', { n: num(s.roundCommit) }) })
             : '',
           badges.length ? el('div', { class: 'seat-flags', text: badges.join(' ') }) : '',
           s.seat === pub.actingSeat ? el('div', { class: 'seat-timer' }) : '',
@@ -379,7 +373,7 @@ export class LocalTableScreen {
   }
 
   renderAmount() {
-    this.amountLabel.textContent = (Number(this.amountInput.value) || 0).toLocaleString();
+    this.amountLabel.textContent = num(Number(this.amountInput.value) || 0);
   }
 
   renderActionBar() {
@@ -390,22 +384,17 @@ export class LocalTableScreen {
       btn.disabled = !myTurn;
     }
     this.amountInput.disabled = !myTurn;
+    labelActionBar(this, la, pub);
 
     if (!myTurn) {
-      this.checkCallBtn.textContent = 'Check / Call';
-      this.betRaiseBtn.textContent = 'Bet / Raise';
       this.amountLabel.textContent = '';
       return;
     }
 
     this.foldBtn.disabled = !la.canFold;
-    this.checkCallBtn.textContent = la.callAmount > 0
-      ? `Call ${la.callAmount.toLocaleString()}`
-      : 'Check';
     this.checkCallBtn.disabled = !(la.canCheck || la.callAmount > 0);
 
     const canAggro = pub.currentBet === 0 ? la.canBet : la.canRaise;
-    this.betRaiseBtn.textContent = pub.currentBet === 0 ? 'Bet' : 'Raise to';
     this.betRaiseBtn.disabled = !canAggro;
     this.allInBtn.disabled = la.canAllIn === false || la.maximumAmount <= 0;
 
@@ -444,24 +433,39 @@ export class LocalTableScreen {
     for (const entry of pub.recentLog) {
       if (!Array.isArray(entry) || entry[0] <= this.seenLogSeq) continue;
       this.seenLogSeq = entry[0];
-      this.pushEvent(describeLogEntry(entry, pub.seats));
+      const seats = pub.seats;
+      this.pushEvent(() => describeLogEntry(entry, seats));
     }
   }
 
+  // text: a function returning the line in the current language, or a string.
   pushEvent(text, cls = '') {
     this.feedItems.push({ text, cls });
     while (this.feedItems.length > FEED_CAP) this.feedItems.shift();
-    if (this.feed) {
-      this.feed.textContent = '';
-      for (const item of this.feedItems.slice().reverse()) {
-        this.feed.append(el('div', { class: `feed-item${item.cls ? ' ' + item.cls : ''}`, text: item.text }));
-      }
+    this.renderFeed();
+  }
+
+  renderFeed() {
+    if (!this.feed) return;
+    this.feed.textContent = '';
+    for (const item of this.feedItems.slice().reverse()) {
+      const text = typeof item.text === 'function' ? item.text() : item.text;
+      this.feed.append(el('div', { class: `feed-item${item.cls ? ' ' + item.cls : ''}`, text }));
     }
+  }
+
+  // Language change: static labels re-apply through data-i18n; the rest here.
+  relocalize() {
+    if (this.destroyed) return;
+    this.renderFeed();
+    this.render();
+    if (this.lastError && this.errorLine && !this.errorLine.hidden) this.errorLine.textContent = serverMessage(this.lastError);
   }
 
   showError(message) {
     if (!this.errorLine) return;
-    this.errorLine.textContent = message;
+    this.lastError = message;
+    this.errorLine.textContent = serverMessage(message);
     this.errorLine.hidden = false;
     setTimeout(() => { if (this.errorLine) this.errorLine.hidden = true; }, 4000);
   }

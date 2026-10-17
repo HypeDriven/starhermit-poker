@@ -5,39 +5,41 @@
 import { PRESETS, CATEGORIES, presetTier, describe, pixelRatio } from './gfx.js';
 import { graphics } from './gfx-settings.js';
 import { strings } from './gfx-i18n.js';
+import { el, onLocaleChange } from './i18n.js';
 
-function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') node.className = v;
-    else if (k === 'text') node.textContent = v;
-    else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
-    else if (v !== false && v != null) node.setAttribute(k, v === true ? '' : v);
-  }
-  node.append(...children);
-  return node;
-}
 
-/** The Settings button used on menus and tables. */
+/** The Settings button used on menus and tables (relabelled on a language change). */
 export function settingsButton(extraClass = '') {
-  const t = strings();
-  return el('button', {
+  const label = el('span', { class: 'settings-label' });
+  const btn = el('button', {
     type: 'button',
     class: `settings-btn ${extraClass}`.trim(),
     'data-action': 'open-settings',
     'aria-haspopup': 'dialog',
-    'aria-label': t.openSettings,
-    title: t.settings,
     onclick: (e) => { e.stopPropagation(); openSettings(e.currentTarget); },
-  }, el('span', { class: 'settings-icon', 'aria-hidden': 'true', text: '⚙' }),
-  el('span', { class: 'settings-label', text: t.settings }));
+  }, el('span', { class: 'settings-icon', 'aria-hidden': 'true', text: '⚙' }), label);
+  const relabel = () => {
+    const t = strings();
+    btn.setAttribute('aria-label', t.openSettings);
+    btn.title = t.settings;
+    label.textContent = t.settings;
+  };
+  relabel();
+  btn.classList.add('settings-btn-i18n');
+  btn._relabel = relabel;
+  return btn;
 }
+
+// Language change: relabel every Settings button on the page.
+onLocaleChange(() => {
+  for (const b of document.querySelectorAll('.settings-btn-i18n')) if (b._relabel) b._relabel();
+});
 
 let openPanel = null;
 
 export function openSettings(opener) {
   if (openPanel) return openPanel;
-  const t = strings();
+  let t = strings();
   const tierName = (tier) => t[`tier_${tier}`] || tier;
   const presetName = (p) => t[`preset_${p}`] || p;
 
@@ -58,7 +60,7 @@ export function openSettings(opener) {
     sel.addEventListener('change', () => graphics.set({ [cat]: sel.value }));
     catSelects[cat] = sel;
     rows.push(el('label', { class: 'gfx-row', for: sel.id },
-      el('span', { class: 'gfx-label', text: t[`cat_${cat}`] || cat }), sel));
+      el('span', { class: 'gfx-label', 'data-gfx-label': `cat_${cat}`, text: t[`cat_${cat}`] || cat }), sel));
   }
 
   presetSel.addEventListener('change', () => graphics.setPreset(presetSel.value));
@@ -77,19 +79,19 @@ export function openSettings(opener) {
     'aria-labelledby': 'settings-title',
   },
   el('div', { class: 'settings-head' },
-    el('h2', { id: 'settings-title', text: t.settings }), closeBtn),
+    el('h2', { id: 'settings-title', 'data-gfx-label': 'settings', text: t.settings }), closeBtn),
   el('section', { class: 'settings-section', 'data-section': 'graphics', 'aria-labelledby': 'gfx-heading' },
-    el('h3', { id: 'gfx-heading', text: t.graphics }),
+    el('h3', { id: 'gfx-heading', 'data-gfx-label': 'graphics', text: t.graphics }),
     el('label', { class: 'gfx-row', for: 'gfx-preset' },
-      el('span', { class: 'gfx-label', text: t.quality }), presetSel),
+      el('span', { class: 'gfx-label', 'data-gfx-label': 'quality', text: t.quality }), presetSel),
     el('label', { class: 'gfx-row', for: 'gfx-scale' },
-      el('span', { class: 'gfx-label', text: t.renderScale }),
+      el('span', { class: 'gfx-label', 'data-gfx-label': 'renderScale', text: t.renderScale }),
       el('span', { class: 'gfx-scale' }, scale, scaleOut)),
     ...rows,
     el('label', { class: 'gfx-row gfx-check', for: 'gfx-adaptive', title: t.adaptiveHint },
-      el('span', { class: 'gfx-label', text: t.adaptive }), adaptive),
+      el('span', { class: 'gfx-label', 'data-gfx-label': 'adaptive', text: t.adaptive }), adaptive),
     el('label', { class: 'gfx-row gfx-check', for: 'gfx-fps' },
-      el('span', { class: 'gfx-label', text: t.showFps }), fps),
+      el('span', { class: 'gfx-label', 'data-gfx-label': 'showFps', text: t.showFps }), fps),
     summary, note));
   const backdrop = el('div', { class: 'settings-backdrop' }, dialog);
 
@@ -125,6 +127,16 @@ export function openSettings(opener) {
   refresh();
   // Pixel size / post status settle a frame after a change.
   const unsub = graphics.subscribe(() => { refresh(); requestAnimationFrame(refreshSummary); });
+  // Language change: relabel this panel in place (the shared Sound, Language
+  // and Report sections mounted inside the Graphics section stay put).
+  const unsubLang = onLocaleChange(() => {
+    t = strings();
+    for (const n of dialog.querySelectorAll('[data-gfx-label]')) n.textContent = t[n.dataset.gfxLabel] || n.textContent;
+    closeBtn.setAttribute('aria-label', t.close);
+    dialog.querySelector('label[for="gfx-adaptive"]').title = t.adaptiveHint;
+    note.textContent = t.postFailed;
+    refresh();
+  });
   const poll = setInterval(refreshSummary, 1000);
 
   const focusables = () => [...dialog.querySelectorAll('button, select, input')].filter((n) => !n.disabled);
@@ -140,6 +152,7 @@ export function openSettings(opener) {
   };
   function close() {
     unsub();
+    unsubLang();
     clearInterval(poll);
     backdrop.removeEventListener('keydown', onKey);
     backdrop.remove();

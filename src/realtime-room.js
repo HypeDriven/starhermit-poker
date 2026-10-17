@@ -72,7 +72,7 @@ export class ReadyTracker {
 export class RoomController {
   // net: the shared net context (client, scope, tokenManager).
   // Handlers: onRoster(room), onPresence({userId, online}), onReady(participantId, ready),
-  // onResult(result), onSocketDown(), onAuthLost().
+  // onResult(result), onSocketDown(), onAuthLost(), onTermsRequired(), onUnavailable().
   constructor(net, handlers = {}) {
     this.net = net;
     this.handlers = handlers;
@@ -107,6 +107,18 @@ export class RoomController {
     const room = await this.net.client.get(`${ROOMS}/${roomId}`);
     this.room = room;
     return room;
+  }
+
+  // false when the room is gone (404/403/410) or Closed; throws on network
+  // trouble (the reconnect loop then keeps trying).
+  async roomAvailable(roomId) {
+    try {
+      const room = await this.net.client.get(`${ROOMS}/${roomId}`);
+      return !!room && room.status !== 'Closed';
+    } catch (e) {
+      if (e && [403, 404, 410].includes(e.status)) return false;
+      throw e;
+    }
   }
 
   // The caller's current non-Closed room, or null. /rooms/joined answers []
@@ -188,7 +200,12 @@ export class RoomController {
       onDown: () => this.handlers.onSocketDown && this.handlers.onSocketDown(),
       // Every reconnect renews the launch token first; urlFactory then reads the new one.
       renew: this.net.tokenManager.renewForReconnect ? () => this.net.tokenManager.renewForReconnect() : null,
+      // Before reopening: is the room still there (and not Closed)?
+      available: () => this.roomAvailable(roomId),
       onAuthLost: () => this.handlers.onAuthLost && this.handlers.onAuthLost(),
+      // Terms consent: stopped; app.js shows the terms notice (SDK `termsrequired`).
+      onTermsRequired: () => this.handlers.onTermsRequired && this.handlers.onTermsRequired(),
+      onUnavailable: () => this.handlers.onUnavailable && this.handlers.onUnavailable(),
     });
     this.socket.connect();
   }

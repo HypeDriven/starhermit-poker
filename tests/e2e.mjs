@@ -38,6 +38,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { launchToken, stubStarHermit } from './starhermit-e2e.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOT = (stage, vp) => `/tmp/poker-e2e-${stage}-${vp}.png`;
@@ -379,6 +380,108 @@ async function runGraphicsPass(browser, name, ctxOpts, { touch }) {
   console.log(`ok - ${name}: graphics pass, no console errors or warnings`);
 }
 
+// ---------- language pass ----------
+// Signed in (stubbed StarHermit): Automatic follows the account language
+// (fr-CA); choosing German re-renders the menu and the open Settings panel in
+// place, saves ui.language, and Report a problem posts to /reports. Offline:
+// switching to German mid-hand re-renders the table without rebuilding it —
+// the same hand keeps going.
+async function runLanguagePass(browser, name, ctxOpts) {
+  const errors = [];
+  const watch = (page) => {
+    page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+    page.on('console', (m) => {
+      if (!['error', 'warning'].includes(m.type()) || browserNoise.test(m.text())) return;
+      errors.push(`console: ${m.text()}`);
+    });
+  };
+  const overflow = (page, sel) => page.evaluate((s) => [...document.querySelectorAll(s)]
+    .filter((n) => n.offsetParent && n.getBoundingClientRect().right > window.innerWidth + 1)
+    .map((n) => n.textContent.trim().slice(0, 30)), sel);
+  const context = await browser.newContext(ctxOpts);
+  try {
+    // --- signed in ---
+    const page = await context.newPage();
+    watch(page);
+    const calls = await stubStarHermit(page, { preferredLanguage: 'fr-CA' });
+    await page.goto('about:blank');
+    await page.goto(`${BASE}/index.html#game_token=${launchToken()}`, { waitUntil: 'load' });
+    await page.waitForFunction(() => document.documentElement.lang === 'fr-CA', null, { timeout: 15000 });
+    await page.waitForSelector('.main-menu .menu-actions');
+    const quick = page.locator('.main-menu .menu-actions button.primary');
+    if ((await quick.textContent()).trim() !== 'Partie rapide') throw new Error('menu not in French: ' + await quick.textContent());
+    await page.locator('.main-menu [data-action="open-settings"]').click();
+    await page.waitForSelector('#settings-panel');
+    const choice = page.locator('#settings-panel [data-game-language="choice"]');
+    await choice.waitFor({ state: 'attached', timeout: 5000 });
+    if ((await page.locator('[data-game-language="choice"]').count()) !== 1) throw new Error('expected exactly one language selector');
+    await choice.scrollIntoViewIfNeeded();
+    const auto = await choice.locator('option').first().textContent();
+    if (auto !== 'Automatique — Français (Canada)') throw new Error('Automatic label not resolved: ' + auto);
+    if ((await page.textContent('#settings-title')).trim() !== 'Paramètres') throw new Error('settings not in French');
+    await choice.selectOption('de-DE');
+    await page.waitForFunction(() => document.documentElement.lang === 'de-DE');
+    await page.waitForFunction(() => /gespeichert/.test(document.querySelector('[data-game-language="status"]').textContent));
+    if (calls.settings['ui.language']?.choice !== 'de-DE') throw new Error('ui.language not saved: ' + JSON.stringify(calls.settings));
+    if ((await page.textContent('#settings-title')).trim() !== 'Einstellungen') throw new Error('settings title not re-rendered');
+    if ((await page.textContent('#gfx-heading')).trim() !== 'Grafik') throw new Error('graphics heading not re-rendered');
+    if (!(await choice.isVisible())) throw new Error('language selector lost after the switch');
+    if ((await quick.textContent()).trim() !== 'Schnelles Spiel') throw new Error('menu not re-rendered: ' + await quick.textContent());
+    const report = page.locator('#settings-panel [data-game-report="title"]');
+    await report.scrollIntoViewIfNeeded();
+    await report.fill('Test report');
+    await page.click('#settings-panel [data-game-report="send"]');
+    await page.waitForFunction(() => /Danke/.test(document.querySelector('[data-game-report="status"]').textContent));
+    if (!calls.reports?.[0] || calls.reports[0].kind !== 'bug') throw new Error('report not posted');
+    const panelOver = await overflow(page, '#settings-panel label, #settings-panel button, #settings-panel select');
+    if (panelOver.length) throw new Error('German settings overflow: ' + panelOver.join(' | '));
+    await page.screenshot({ path: SHOT('language-settings', name) });
+    await page.click('#settings-panel [data-action="close-settings"]');
+    await page.waitForSelector('#settings-panel', { state: 'detached' });
+    const menuOver = await overflow(page, '.main-menu *');
+    if (menuOver.length) throw new Error('German menu overflows: ' + menuOver.join(' | '));
+    await page.screenshot({ path: SHOT('language-menu', name) });
+    await page.unroute(/\/api\/v1\//);
+    await page.close();
+
+    // --- offline table, mid-hand ---
+    const table = await context.newPage();
+    watch(table);
+    await table.goto('about:blank');
+    await table.goto(BASE, { waitUntil: 'load' });
+    await table.waitForSelector('.main-menu');
+    await table.locator('.menu-actions button.primary').click();
+    await table.waitForFunction(() => /#\d+/.test(document.querySelector('.table-status')?.textContent || ''), null, { timeout: 15000 });
+    await table.evaluate(() => { window.__tableScreen = document.querySelector('.table-screen'); });
+    const handOf = () => table.evaluate(() => Number((document.querySelector('.table-status')?.textContent.match(/#(\d+)/) || [])[1]));
+    const before = await handOf();
+    await table.locator('.table-topbar [data-action="open-settings"]').click();
+    const tchoice = table.locator('#settings-panel [data-game-language="choice"]');
+    await tchoice.waitFor({ state: 'attached', timeout: 5000 });
+    await tchoice.scrollIntoViewIfNeeded();
+    await tchoice.selectOption('de-DE');
+    await table.waitForFunction(() => document.documentElement.lang === 'de-DE');
+    await table.click('#settings-panel [data-action="close-settings"]');
+    await table.waitForSelector('#settings-panel', { state: 'detached' });
+    const fold = table.locator('.action-bar .action-buttons button').first();
+    if ((await fold.textContent()).trim() !== 'Passen') throw new Error('action bar not re-rendered: ' + await fold.textContent());
+    const status = (await table.textContent('.table-status')).trim();
+    if (!/^Hand #\d+ · (Preflop|Flop|Turn|River|Showdown|warten)/.test(status)) throw new Error('status not re-rendered: ' + status);
+    if (!/^Pot /.test((await table.textContent('.pot-display')).trim())) throw new Error('pot line missing');
+    if ((await table.textContent('.table-screen > button')).trim() !== 'Tisch verlassen') throw new Error('leave button not re-rendered');
+    const same = await table.evaluate(() => window.__tableScreen === document.querySelector('.table-screen'));
+    const after = await handOf();
+    if (!same || !(after >= before)) throw new Error(`table rebuilt or match restarted (${before} -> ${after})`);
+    const tableOver = await overflow(table, '.table-screen button, .table-status, .seat-panel *');
+    if (tableOver.length) throw new Error('German table overflows: ' + tableOver.join(' | '));
+    await table.screenshot({ path: SHOT('language-table', name) });
+    ok(`${name}: language — Automatic = account fr-CA, German re-renders menu + settings in place, ui.language saved, report posted; offline table re-rendered mid-hand (#${before}→#${after})`);
+  } finally {
+    await context.close();
+  }
+  if (errors.length) throw new Error(`${name} language pass had console output:\n  ${errors.join('\n  ')}`);
+}
+
 // ---------- main ----------
 let browser = null;
 try {
@@ -393,7 +496,9 @@ try {
   await runGraphicsPass(browser, 'desktop', { viewport: { width: 1280, height: 800 } }, { touch: false });
   await runGraphicsPass(browser, 'mobile',
     { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }, { touch: true });
-  console.log('\nE2E PASS — poker, desktop + mobile, no page errors');
+  await runLanguagePass(browser, 'desktop', { viewport: { width: 1280, height: 800 } });
+  await runLanguagePass(browser, 'mobile', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  console.log('\nE2E PASS — poker, desktop + mobile + language, no page errors');
 } catch (e) {
   failures++;
   console.error('\nE2E FAIL:', e.message || e);

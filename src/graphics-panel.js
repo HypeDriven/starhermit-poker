@@ -121,7 +121,8 @@ export function openSettings(opener) {
     const view = graphics.view;
     const px = view && view.size && view.size[0] ? view.pixels()
       : [Math.round(innerWidth * pixelRatio(r, devicePixelRatio || 1)), Math.round(innerHeight * pixelRatio(r, devicePixelRatio || 1))];
-    summary.textContent = `${graphics.gpu || t.unknownGpu} · ${describe(r, px, t)}`;
+    summary.textContent = [graphics.gpu || t.unknownGpu, graphics.level != null ? t.level(graphics.level) : null, describe(r, px, t)]
+      .filter(Boolean).join(' · ');
     note.hidden = !(view && view.postFailed);
   };
   refresh();

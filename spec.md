@@ -39,16 +39,14 @@ Graphics panel says so.
 
 A **Settings** button (main menu, and top-right of every table) opens a modal
 Settings panel whose **Graphics** section offers: Quality (Auto — chosen from
-the GPU's unmasked renderer string, software renderers get Low, discrete GPUs
-and Apple M-series get High, others Balanced, touch devices capped at
-Balanced — plus Low, Balanced, High, Ultra); Render scale 50–200%; one
+the StarHermit hardware level below — plus Low, Balanced, High, Ultra); Render scale 50–200%; one
 override per effect (Shadows off/low/medium/high, Ambient occlusion
 off/on/high, Bloom, Colour grade, Anti-aliasing off/FXAA/SMAA/MSAA,
 Reflections, Table detail plain/detailed, Particles low/high, Background
 static/animated), each defaulting to "From preset (…)"; Adaptive resolution
 (on by default); Show frame rate (off by default; a readout at the bottom
-left that never takes pointer input); and a summary line "GPU · cost ·
-W×H px". Choosing a preset clears the overrides. Changes apply immediately
+left that never takes pointer input); and a summary line "GPU · Level N ·
+cost · W×H px" ("Level" localized). Choosing a preset clears the overrides. Changes apply immediately
 and persist in `localStorage` (`poker.graphics`); `<body>` carries
 `data-gfx-preset`, `data-gfx-detail` and `data-gfx-background`. The panel is
 keyboard (focus trap, Escape closes), mouse and touch operable, scrolls inside
@@ -56,6 +54,48 @@ itself on short screens, and follows the game Language setting (all nine
 locales); a language change relabels the open panel in place. The shared
 Sound, Language and Report sections (`game-options.js`) mount inside the
 Graphics section and stay mounted across a language change.
+
+**Hardware-level detection.** `src/gpu-level.js` (shared StarHermit copy, `window.StarHermitGpu`, a classic
+script loaded before `src/app.js`, never edited here) rates the WebGL unmasked renderer plus device facts
+(`detectSystem()`: phone/tablet, cores, memory, screen) on the StarHermit hardware level 0–20 (0 = Galaxy S20 /
+Intel UHD or weaker, every software renderer and no WebGL; 20 = RTX 5090; each level ≈ 1.23×; laptop parts two
+levels below desktop; phones, tablets and ≤ 4 GB machines capped at 9). `src/gfx.js` maps it with
+`presetForLevel(level, { low: 0, balanced: 4, high: 10, ultra: 17 })`, so Auto picks Ultra on strong GPUs;
+adaptive resolution still steps down when slow. Headless SwiftShader is level 0 → Low. Phones and tablets pace
+Auto FPS at half the display refresh rate ("Auto (half refresh rate)") and start at 16 simultaneous sounds
+(shared `game-options.js`).
+
+**Per-preset budgets** (`BUDGETS` / `budgetFor` / `particleCounts` in `src/gfx.js`). Each preset holds 60 FPS
+on the weakest GPU Auto gives it — Low at level 0, Balanced 4, High 10, Ultra 17. Cards, chips, seats, the
+action bar and the rules are identical on every preset; only visuals change. Star, mote and menu-dust counts
+are tuned at the floor level and scale up within the preset on faster GPUs (`StarHermitGpu.scaleBudget`, ≤ 2×,
+at most 720 / 720 / 2000; the point pools are allocated once at that size and drawn partially). A change of
+shading, curve segments or texture sizes rebuilds the table surfaces and the card/chip resources live (plain
+cards and chips now share their geometry and materials too).
+
+| Budget | Low | Balanced | High | Ultra |
+|---|---|---|---|---|
+| Table, card and chip shading | Lambert | Standard | Physical (clear-coated rail, cards, chips; leather sheen) | as High |
+| Card-face texture (authored 256 × 356) | 128 px | 256 px | 256 px | 512 px |
+| Chip-face texture | 64 px | 128 px | 128 px | 256 px |
+| Printed felt texture (Detailed) / felt bump | 512 / 256 px | 1024 / 512 px | 1024 / 512 px | 2048 / 1024 px |
+| Table ellipse curve segments (felt, rail, base, trims, floor) | 48 | 64 | 96 | 128 |
+| Chip radial segments | 20 | 28 | 40 | 48 |
+| Backdrop stars (Particles low: half) | 120 | 180 | 240 | 360 |
+| Key-light dust motes (Particles high) | 80 | 140 | 220 | 360 |
+| Menu casino dust (Particles low: 37 %) | 300 | 450 | 700 | 1000 |
+| Bloom / GTAO resolution | ½ | ½ | ½ | full |
+
+**Benchmark** (`node tools/gfx-bench.mjs poker`; hook `tests/gfx-bench.mjs` picks the preset in the menu's
+Settings → Graphics, opens the offline 3D table against the AI with the primary Play button and keeps playing
+hands through the visible action bar — check, call small bets, fold big ones, New match when one ends). Measured
+2026-10-18 (GPU ms above the draws-skipped floor, projected to the preset's floor level; CPU p90 on the RTX 5090
+run):
+
+- Desktop 1920×1080: PASS low (typical 0.00 / slow 2.32 ms GPU, CPU 0.70 ms); PASS balanced (4.03 / 4.18, CPU
+  0.90); PASS high (1.15 / 1.46, CPU 1.60); PASS ultra (2.60 / 2.94, CPU 1.50).
+- Mobile 390×844 at DPR 3 (`--mobile --presets low,balanced`): PASS low (0.43 / 1.84, CPU 0.50); PASS balanced
+  (0.00 / 0.65, CPU 0.80).
 
 ## Large screens
 
@@ -65,12 +105,14 @@ Above 1600×1000 the shared `ui-scale.js` sets `--ui-scale` (`min(w/1600, h/1000
 
 | Path | What it is |
 |---|---|
-| `src/gfx.js` | Pure quality model: presets, categories, `detectPreset`, `resolve`, `presetTier`, `choosePreset`, `describe`, `pixelRatio` |
-| `src/gfx-settings.js` | Settings store: GPU probe, `localStorage`, change listeners, `<body>` attributes, FPS readout |
+| `src/gpu-level.js` | Shared StarHermit hardware-level module (`window.StarHermitGpu`; copy of `tools/gpu-level.js`) |
+| `src/gfx.js` | Pure quality model: presets, categories, `detectLevel`/`presetForLevel`/`detectPreset`, per-preset `BUDGETS`/`budgetFor`/`particleCounts`, `resolve`, `presetTier`, `choosePreset`, `describe`, `pixelRatio` |
+| `src/gfx-settings.js` | Settings store: GPU probe and hardware level, `localStorage`, change listeners, `<body>` attributes, FPS readout |
 | `src/gfx-pipeline.js` | Shared three.js renderer/post-processing/adaptive-resolution pipeline and the grade shader |
 | `src/graphics-panel.js` | Settings button and the Settings → Graphics panel |
 | `src/gfx-i18n.js` | Graphics panel strings for the nine supported locales (in the game language) |
-| `tests/gfx.test.js` | Unit tests for the quality model and panel strings |
+| `tests/gfx.test.js` | Unit tests for the quality model and panel strings: hardware level → preset (SwiftShader/llvmpipe/no WebGL, AMD Radeon Graphics and Intel UHD → Low, Iris Xe → Balanced, GTX 1070 → High, RTX 4080/5090 → Ultra, phones such as Adreno 740 capped at Balanced), the budget table, the level label |
+| `tests/gfx-bench.mjs` | Dev-only hook for `tools/gfx-bench.mjs` (the real-GPU 60 FPS benchmark) |
 
 ## StarHermit integration
 

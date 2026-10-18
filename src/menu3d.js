@@ -15,6 +15,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GfxPipeline } from './gfx-pipeline.js';
+import { particleCounts, DUST_MAX } from './gfx.js';
 import {
   SHELL, makeDriftState, stepDrift, mulberry32, easeInOutCubic, clamp01,
 } from './menu3d-physics.js';
@@ -484,7 +485,7 @@ export class MenuScene3D {
   }
 
   buildDust() {
-    const n = 700;
+    const n = DUST_MAX; // pool at the largest budget; the preset draws particleCounts(q).dust of it
     const pos = new Float32Array(n * 3);
     const seed = new Float32Array(n);
     const rand = mulberry32(42);
@@ -680,7 +681,7 @@ export class MenuScene3D {
   applyGraphics(q) {
     this.animatedBg = q.background === 'animated' && !REDUCED;
     const high = q.particles === 'high';
-    if (this.dust) this.dust.geometry.setDrawRange(0, high ? 700 : 260);
+    if (this.dust) this.dust.geometry.setDrawRange(0, particleCounts(q).dust);
     this.cards.forEach((c, i) => { c.visible = high || i % 2 === 0; });
   }
 

@@ -1,9 +1,9 @@
-// Graphics settings store (browser side of gfx.js): GPU detection, the saved
+// Graphics settings store (browser side of gfx.js): hardware-level detection, the saved
 // settings in localStorage, change notification, and the page-level bits
 // every renderer shares — <body data-gfx-*> attributes and the FPS readout.
 // No three.js import, so DOM-only screens can use it cheaply.
 
-import { resolve, detectPreset, choosePreset } from './gfx.js';
+import { resolve, detectLevel, presetForLevel, choosePreset } from './gfx.js';
 
 export const STORAGE_KEY = 'poker.graphics';
 
@@ -43,6 +43,7 @@ class GraphicsSettings {
     this.saved = readSaved();
     this.gpu = null;
     this.detected = null;
+    this.level = null;
     this.listeners = new Set();
     this.view = null; // the renderer currently on screen (for panel info)
   }
@@ -50,12 +51,20 @@ class GraphicsSettings {
   _detect() {
     if (this.detected) return;
     this.gpu = probeGpu();
-    this.detected = detectPreset(this.gpu, { mobile: isMobile() });
+    // StarHermit hardware level (src/gpu-level.js): renderer string + device facts (phone/tablet,
+    // cores, memory, screen); phones and tablets are capped at level 9 (Balanced).
+    let sys = { mobile: isMobile() };
+    try {
+      const G = globalThis.StarHermitGpu;
+      if (G) { const d = G.detectSystem(); sys = { ...d, mobile: sys.mobile || d.mobile }; }
+    } catch { /* defaults */ }
+    this.level = detectLevel(this.gpu, sys);
+    this.detected = presetForLevel(this.level);
   }
 
   get resolved() {
     this._detect();
-    return resolve(this.saved, this.detected);
+    return resolve(this.saved, this.detected, this.level);
   }
 
   /** Merge a patch into the saved settings ('preset' value removes an override). */

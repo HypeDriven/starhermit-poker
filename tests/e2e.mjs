@@ -332,6 +332,7 @@ async function runGraphicsPass(browser, name, ctxOpts, { touch }) {
     if (!/shadows/.test(summary) || /bloom/.test(summary) || !/\d+×\d+ px/.test(summary)) {
       throw new Error(`unexpected summary "${summary}"`);
     }
+    if (!/ · Level 0 · /.test(summary)) throw new Error(`summary lacks the hardware level: "${summary}"`);
     await page.screenshot({ path: SHOT('gfx-panel', name) });
     ok(`${name}: menu Settings → Graphics switched Low → High, Bloom override off ("${summary.trim()}")`);
     await press(page.locator('#settings-panel [data-action="close-settings"]'));

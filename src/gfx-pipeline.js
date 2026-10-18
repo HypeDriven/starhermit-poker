@@ -40,6 +40,15 @@ export const GradeShader = {
     }`,
 };
 
+// Run a post pass at a fraction of the frame: EffectComposer.addPass/setSize hand every pass the full
+// frame size, so the pass's own setSize applies the budget's scale (half-res bloom/GTAO below Ultra).
+export function atScale(pass, k) {
+  if (!(k < 1)) return pass;
+  const setSize = pass.setSize.bind(pass);
+  pass.setSize = (w, h) => setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+  return pass;
+}
+
 export class GfxPipeline {
   /**
    * opts: container, scene, camera,
@@ -138,7 +147,8 @@ export class GfxPipeline {
 
   _postKey(w, h) {
     const g = this.q;
-    return g.post ? [g.ao, g.bloom, g.grade, g.antialias, w, h, this.pixelRatio].join('|') : 'none';
+    const b = g.budget || {};
+    return g.post ? [g.ao, g.bloom, g.grade, g.antialias, b.aoRes, b.bloomRes, w, h, this.pixelRatio].join('|') : 'none';
   }
 
   _buildPost(w, h) {
@@ -183,11 +193,11 @@ export class GfxPipeline {
         ao.blendIntensity = 0.75;
         ao.updateGtaoMaterial({ radius: 0.35, distanceExponent: 1.4, thickness: 1.0, scale: 1.0, samples: g.ao === 'high' ? 16 : 8 });
         ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: g.ao === 'high' ? 6 : 4, rings: 2, samples: g.ao === 'high' ? 16 : 8 });
-        composer.addPass(ao);
+        composer.addPass(atScale(ao, g.budget ? g.budget.aoRes : 1));
       }
       if (g.bloom === 'on') {
         const b = this.o.bloom || { strength: 0.5, radius: 0.45, threshold: 0.9 };
-        composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), b.strength, b.radius, b.threshold));
+        composer.addPass(atScale(new UnrealBloomPass(new THREE.Vector2(w, h), b.strength, b.radius, b.threshold), g.budget ? g.budget.bloomRes : 1));
       }
       composer.addPass(new OutputPass());
       // The grade works on display-referred colour, after tone mapping.

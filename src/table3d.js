@@ -6,7 +6,8 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { seatVisual, seatUnit, visibleCardsForSeat } from './table-utils.js';
 import { GfxPipeline } from './gfx-pipeline.js';
-import { reducedMotion } from './gfx-settings.js';
+import { reducedMotion, graphics } from './gfx-settings.js';
+import { particleCounts, STAR_MAX, MOTE_MAX } from './gfx.js';
 
 export { seatVisual, seatUnit };
 
@@ -34,14 +35,14 @@ function ellipseRing(outerX, outerY, innerX, innerY) {
   return shape;
 }
 
-function horizontalExtrusion(shape, depth, bevelSize = 0.04) {
+function horizontalExtrusion(shape, depth, bevelSize = 0.04, curveSegments = 96) {
   const geometry = new THREE.ExtrudeGeometry(shape, {
     depth,
     bevelEnabled: true,
-    bevelSegments: 3,
+    bevelSegments: curveSegments >= 96 ? 3 : 2,
     bevelSize,
     bevelThickness: bevelSize,
-    curveSegments: 96,
+    curveSegments,
   });
   geometry.center();
   geometry.rotateX(Math.PI / 2);
@@ -54,11 +55,13 @@ function roundedRect(ctx, x, y, w, h, radius) {
   ctx.closePath();
 }
 
-function cardCanvas(card) {
+// Drawn in 256 × 356 card units into a `px`-wide canvas (the preset's card-texture budget).
+function cardCanvas(card, px = 256) {
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 356;
+  canvas.width = px;
+  canvas.height = Math.round(px * 356 / 256);
   const g = canvas.getContext('2d');
+  g.scale(px / 256, canvas.height / 356);
 
   roundedRect(g, 3, 3, 250, 350, 18);
   if (card === -1) {
@@ -195,11 +198,13 @@ function noiseTexture(size, blur, lo, hi) {
   return canvasTexture(c, { srgb: false, repeat: true });
 }
 
-function feltTexture() {
+// Drawn in 1024 × 592 units into a `px`-wide canvas (the preset's felt-texture budget).
+function feltTexture(px = 1024) {
   const W = 1024, H = 592;
   const c = document.createElement('canvas');
-  c.width = W; c.height = H;
+  c.width = px; c.height = Math.round(px * H / W);
   const g = c.getContext('2d');
+  g.scale(px / W, c.height / H);
   const grad = g.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, W * 0.56);
   grad.addColorStop(0, '#0c6a4e');
   grad.addColorStop(0.7, '#08573f');
@@ -234,10 +239,11 @@ function feltTexture() {
 }
 
 // Casino chip: face with edge inserts, inlay ring and a star; side stripes.
-function chipFaceTexture(color) {
+function chipFaceTexture(color, px = 128) {
   const c = document.createElement('canvas');
-  c.width = c.height = 128;
+  c.width = c.height = px;
   const g = c.getContext('2d');
+  g.scale(px / 128, px / 128);
   const hex = `#${color.toString(16).padStart(6, '0')}`;
   const light = color === 0xf0e6d0 || color === 0x21252e ? '#c7a24c' : '#f5ecd6';
   g.fillStyle = hex;
@@ -339,6 +345,9 @@ export class TableRenderer {
     // Diff state for animation triggers (hand number / board growth).
     this._anim = { handNumber: 0, boardLen: 0 };
     this.reduced = reducedMotion();
+    // Resolved settings (incl. the preset's asset budget) before the scene is built; the pipeline
+    // re-applies them (and any later change) through applyGraphics.
+    this.q = graphics.resolved;
 
     this.buildLights();
     this.buildRoom();
@@ -389,19 +398,61 @@ export class TableRenderer {
     this.q = q;
     this.detailed = q.detail === 'detailed';
     this.animated = q.background === 'animated' && !this.reduced;
+    this._applyBudget(q.budget);
     if (this.felt) {
       this.felt.material = this.detailed ? this.feltDetailed : this.feltPlain;
       this.rail.material = this.detailed ? this.railDetailed : this.railPlain;
       this.floorPool.visible = this.detailed;
     }
-    if (this.motes) this.motes.visible = q.particles === 'high';
-    if (this.stars) this.stars.geometry.setDrawRange(0, q.particles === 'high' ? 240 : 120);
+    const counts = particleCounts(q);
+    if (this.motes) {
+      this.motes.visible = counts.motes > 0;
+      this.motes.geometry.setDrawRange(0, counts.motes);
+    }
+    if (this.stars) this.stars.geometry.setDrawRange(0, counts.stars);
     // HDR colour so only the acting-seat ring blooms (clamped when bloom is off).
     if (this.actingRing) {
       this.actingRing.material.color.set(0xffd66d).multiplyScalar(q.bloom === 'on' ? 4 : 1);
     }
     this._applyEnv();
     if (this._last) this.update(this._last.pub, this._last.you, { redraw: true });
+  }
+
+  /**
+   * A lit material for the preset's shading budget: MeshPhysicalMaterial on High/Ultra, the same
+   * parameters without clearcoat/sheen as MeshStandardMaterial on Balanced, and MeshLambertMaterial
+   * (colour, maps and emission kept) on Low.
+   */
+  lit(params) {
+    const tier = this.q.budget.material;
+    if (tier === 'physical') return new THREE.MeshPhysicalMaterial(params);
+    const std = {};
+    for (const [k, v] of Object.entries(params)) if (!/^(clearcoat|sheen)/.test(k)) std[k] = v;
+    if (tier === 'standard') return new THREE.MeshStandardMaterial(std);
+    const lam = {};
+    for (const [k, v] of Object.entries(std)) if (!/^(roughness|metalness|envMapIntensity)$/.test(k)) lam[k] = v;
+    return new THREE.MeshLambertMaterial(lam);
+  }
+
+  /** (Re)build the budget-dependent table assets when the shading or asset sizes change. */
+  _applyBudget(b) {
+    const key = [b.material, b.curve, b.felt, b.card, b.chip].join('|');
+    if (key === this._budgetKey) return;
+    const first = !this._budgetKey;
+    this._budgetKey = key;
+    // Card and chip resources depend on the budget: drop them (the redraw recreates them).
+    if (!first) {
+      for (const g of [this.boardGroup, this.potGroup, ...this.seatGroups]) this.clearGroup(g);
+      this.tweens = [];
+      for (const res of this.shared.values()) {
+        if (res.isMaterial && res.map && ![...this.cardTextures.values()].includes(res.map)) res.map.dispose();
+        res.dispose();
+      }
+      this.shared.clear();
+      for (const t of this.cardTextures.values()) t.dispose();
+      this.cardTextures.clear();
+    }
+    this.buildSurfaces(b);
   }
 
   _applyEnv() {
@@ -467,13 +518,7 @@ export class TableRenderer {
   }
 
   buildRoom() {
-    const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(12, 96),
-      new THREE.MeshStandardMaterial({ color: 0x080b12, roughness: 0.88, metalness: 0.12 }));
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -0.64;
-    floor.receiveShadow = true;
-    this.scene.add(floor);
+    // Floor, pedestal and table surfaces are built per budget in buildSurfaces().
 
     // Warm pool of spill light on the carpet around the pedestal.
     this.floorPool = new THREE.Mesh(
@@ -487,8 +532,8 @@ export class TableRenderer {
     this.scene.add(this.floorPool);
 
     const points = [];
-    // Interleaved so the first half of the draw range is an even subset.
-    for (let i = 0; i < 240; i++) {
+    // Golden-angle spiral: every prefix of the draw range (the preset's star budget) is an even subset.
+    for (let i = 0; i < STAR_MAX; i++) {
       const angle = i * 2.39996;
       const radius = 7 + (i % 29) * 0.22;
       points.push(Math.cos(angle) * radius, 2 + (i % 17) * 0.34, Math.sin(angle) * radius - 3);
@@ -500,8 +545,8 @@ export class TableRenderer {
     }));
     this.scene.add(this.stars);
 
-    // Dust motes drifting through the key light's cone (Particles: High).
-    const n = 220;
+    // Dust motes drifting through the key light's cone (Particles: High), drawn up to the budget.
+    const n = MOTE_MAX;
     const pos = new Float32Array(n * 3);
     const seed = new Float32Array(n);
     let r = 7;
@@ -530,63 +575,8 @@ export class TableRenderer {
   }
 
   buildTable() {
-    const pedestal = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.5, 2.05, 0.78, 64),
-      new THREE.MeshStandardMaterial({ color: 0x11141b, roughness: 0.22, metalness: 0.74 }));
-    pedestal.position.y = -0.38;
-    pedestal.castShadow = true;
-    this.scene.add(pedestal);
-
-    const base = new THREE.Mesh(
-      horizontalExtrusion(ellipseShape(TABLE_RX, TABLE_RZ), 0.34, 0.08),
-      new THREE.MeshPhysicalMaterial({ color: 0x171217, roughness: 0.22, metalness: 0.5, clearcoat: 0.65 }));
-    base.position.y = -0.05;
-    base.castShadow = base.receiveShadow = true;
-    this.scene.add(base);
-
-    this.railPlain = new THREE.MeshPhysicalMaterial({ color: 0x381a16, roughness: 0.28, metalness: 0.12, clearcoat: 0.85, clearcoatRoughness: 0.18 });
-    // Detailed: padded leather — grain bump, soft sheen, lacquer clearcoat.
-    const grain = noiseTexture(256, 3, 90, 165);
-    grain.repeat.set(2.5, 2.5);
-    this.railDetailed = new THREE.MeshPhysicalMaterial({
-      color: 0x3f1c17, roughness: 0.46, metalness: 0.05, bumpMap: grain, bumpScale: 1.2,
-      clearcoat: 0.55, clearcoatRoughness: 0.3, sheen: 0.4, sheenColor: new THREE.Color(0x8a4a3a), sheenRoughness: 0.6,
-    });
-    this.rail = new THREE.Mesh(
-      horizontalExtrusion(ellipseRing(TABLE_RX, TABLE_RZ, 3.82, 2.19), 0.25, 0.07), this.railPlain);
-    this.rail.position.y = 0.22;
-    this.rail.castShadow = true;
-    this.rail.receiveShadow = true;
-    this.scene.add(this.rail);
-
-    this.feltPlain = new THREE.MeshStandardMaterial({ color: 0x07543e, roughness: 0.92, metalness: 0.02 });
-    // Detailed: woven baize — fibre noise, a soft centre lift and a printed
-    // gold betting line. Shape UVs span the ellipse in world units.
-    const feltTex = feltTexture();
-    feltTex.repeat.set(1 / 7.72, 1 / 4.46);
-    feltTex.offset.set(0.5, 0.5);
-    const feltBump = noiseTexture(512, 1, 110, 150);
-    feltBump.repeat.set(1.6, 1.6);
-    this.feltDetailed = new THREE.MeshStandardMaterial({
-      color: 0xffffff, map: feltTex, roughness: 0.95, metalness: 0, bumpMap: feltBump, bumpScale: 0.6,
-      envMapIntensity: 0.25,
-    });
-    this.felt = new THREE.Mesh(horizontalExtrusion(ellipseShape(3.84, 2.21), 0.09, 0.015), this.feltPlain);
-    this.felt.position.y = 0.22;
-    this.felt.receiveShadow = true;
-    this.scene.add(this.felt);
-
-    for (const [outer, inner, color, y] of [
-      [[3.88, 2.25], [3.81, 2.18], 0xc69b42, 0.305],
-      [[3.48, 1.88], [3.465, 1.865], 0x93a87b, 0.314],
-    ]) {
-      const trim = new THREE.Mesh(
-        horizontalExtrusion(ellipseRing(...outer, ...inner), 0.018, 0.005),
-        new THREE.MeshStandardMaterial({ color, metalness: 0.72, roughness: 0.28 }));
-      trim.position.y = y;
-      this.scene.add(trim);
-    }
-
+    // Surfaces (floor, pedestal, base, rail, felt, trims) are built per budget in buildSurfaces();
+    // only budget-independent pieces live here.
     const logo = new THREE.Mesh(
       new THREE.PlaneGeometry(2.7, 0.67),
       new THREE.MeshBasicMaterial({
@@ -598,6 +588,92 @@ export class TableRenderer {
     logo.rotation.x = -Math.PI / 2;
     logo.position.set(0, 0.281, -0.72);
     this.scene.add(logo);
+  }
+
+  /**
+   * Floor, pedestal, base, rail, felt and trims for budget `b`: shading model (Lambert / Standard /
+   * Physical), ellipse curve segments and the printed felt texture size. Rebuilt on a budget change.
+   */
+  buildSurfaces(b) {
+    if (this.surfaces) {
+      const seen = new Set();
+      for (const m of this.surfaces) {
+        this.scene.remove(m);
+        m.geometry.dispose();
+      }
+      for (const mat of [...this.surfaceMats]) {
+        if (seen.has(mat)) continue;
+        seen.add(mat);
+        for (const k of ['map', 'bumpMap']) if (mat[k]) mat[k].dispose();
+        mat.dispose();
+      }
+    }
+    this.surfaces = [];
+    this.surfaceMats = [];
+    const add = (mesh) => { this.surfaces.push(mesh); this.scene.add(mesh); return mesh; };
+    const mat = (m) => { this.surfaceMats.push(m); return m; };
+    const seg = b.curve;
+
+    const floor = add(new THREE.Mesh(
+      new THREE.CircleGeometry(12, seg),
+      mat(this.lit({ color: 0x080b12, roughness: 0.88, metalness: 0.12 }))));
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -0.64;
+    floor.receiveShadow = true;
+
+    const pedestal = add(new THREE.Mesh(
+      new THREE.CylinderGeometry(1.5, 2.05, 0.78, Math.round(seg * 2 / 3)),
+      mat(this.lit({ color: 0x11141b, roughness: 0.22, metalness: 0.74 }))));
+    pedestal.position.y = -0.38;
+    pedestal.castShadow = true;
+
+    const base = add(new THREE.Mesh(
+      horizontalExtrusion(ellipseShape(TABLE_RX, TABLE_RZ), 0.34, 0.08, seg),
+      mat(this.lit({ color: 0x171217, roughness: 0.22, metalness: 0.5, clearcoat: 0.65 }))));
+    base.position.y = -0.05;
+    base.castShadow = base.receiveShadow = true;
+
+    this.railPlain = mat(this.lit({ color: 0x381a16, roughness: 0.28, metalness: 0.12, clearcoat: 0.85, clearcoatRoughness: 0.18 }));
+    // Detailed: padded leather — grain bump, soft sheen, lacquer clearcoat (High/Ultra).
+    const grain = noiseTexture(256, 3, 90, 165);
+    grain.repeat.set(2.5, 2.5);
+    this.railDetailed = mat(this.lit({
+      color: 0x3f1c17, roughness: 0.46, metalness: 0.05, bumpMap: grain, bumpScale: 1.2,
+      clearcoat: 0.55, clearcoatRoughness: 0.3, sheen: 0.4, sheenColor: new THREE.Color(0x8a4a3a), sheenRoughness: 0.6,
+    }));
+    this.rail = add(new THREE.Mesh(
+      horizontalExtrusion(ellipseRing(TABLE_RX, TABLE_RZ, 3.82, 2.19), 0.25, 0.07, seg),
+      this.detailed ? this.railDetailed : this.railPlain));
+    this.rail.position.y = 0.22;
+    this.rail.castShadow = true;
+    this.rail.receiveShadow = true;
+
+    this.feltPlain = mat(this.lit({ color: 0x07543e, roughness: 0.92, metalness: 0.02 }));
+    // Detailed: woven baize — fibre noise, a soft centre lift and a printed
+    // gold betting line. Shape UVs span the ellipse in world units.
+    const feltTex = feltTexture(b.felt);
+    feltTex.repeat.set(1 / 7.72, 1 / 4.46);
+    feltTex.offset.set(0.5, 0.5);
+    const feltBump = noiseTexture(b.felt / 2, 1, 110, 150);
+    feltBump.repeat.set(1.6, 1.6);
+    this.feltDetailed = mat(this.lit({
+      color: 0xffffff, map: feltTex, roughness: 0.95, metalness: 0, bumpMap: feltBump, bumpScale: 0.6,
+      envMapIntensity: 0.25,
+    }));
+    this.felt = add(new THREE.Mesh(horizontalExtrusion(ellipseShape(3.84, 2.21), 0.09, 0.015, seg),
+      this.detailed ? this.feltDetailed : this.feltPlain));
+    this.felt.position.y = 0.22;
+    this.felt.receiveShadow = true;
+
+    for (const [outer, inner, color, y] of [
+      [[3.88, 2.25], [3.81, 2.18], 0xc69b42, 0.305],
+      [[3.48, 1.88], [3.465, 1.865], 0x93a87b, 0.314],
+    ]) {
+      const trim = add(new THREE.Mesh(
+        horizontalExtrusion(ellipseRing(...outer, ...inner), 0.018, 0.005, seg),
+        mat(this.lit({ color, metalness: 0.72, roughness: 0.28 }))));
+      trim.position.y = y;
+    }
   }
 
   buildDynamicGroups() {
@@ -628,7 +704,7 @@ export class TableRenderer {
 
   textureForCard(card) {
     if (this.cardTextures.has(card)) return this.cardTextures.get(card);
-    const texture = new THREE.CanvasTexture(cardCanvas(card));
+    const texture = new THREE.CanvasTexture(cardCanvas(card, this.q.budget.card));
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = Math.min(8, this.pipeline.renderer.capabilities.getMaxAnisotropy());
     this.cardTextures.set(card, texture);
@@ -652,7 +728,7 @@ export class TableRenderer {
       // and suits keep full contrast (and sit just under the bloom threshold).
       const body = new THREE.Mesh(
         this.sharedRes('cardGeo', roundedCardGeometry),
-        this.sharedRes('cardMat', () => new THREE.MeshPhysicalMaterial({
+        this.sharedRes('cardMat', () => this.lit({
           color: 0xefe9dd, roughness: 0.45, clearcoat: 0.5, clearcoatRoughness: 0.3,
         })));
       body.castShadow = body.receiveShadow = true;
@@ -667,11 +743,11 @@ export class TableRenderer {
       return group;
     }
     const edge = new THREE.Mesh(
-      new THREE.BoxGeometry(0.59, 0.035, 0.82, 2, 1, 2),
-      new THREE.MeshStandardMaterial({ color: 0xe7e1d5, roughness: 0.48 }));
+      this.sharedRes('edgeGeo', () => new THREE.BoxGeometry(0.59, 0.035, 0.82, 2, 1, 2)),
+      this.sharedRes('edgeMat', () => this.lit({ color: 0xe7e1d5, roughness: 0.48 })));
     edge.castShadow = edge.receiveShadow = true;
     const face = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.565, 0.795),
+      this.sharedRes('plainFaceGeo', () => new THREE.PlaneGeometry(0.565, 0.795)),
       new THREE.MeshBasicMaterial({ map: this.textureForCard(card) }));
     face.rotation.x = -Math.PI / 2;
     face.position.y = 0.019;
@@ -733,12 +809,12 @@ export class TableRenderer {
       const color = colors[(Math.floor(amount / 100) + i) % colors.length];
       if (this.detailed) {
         // Clay chips: striped edge, inlaid face, clearcoat; slightly uneven stack.
-        const geo = this.sharedRes(`chipGeo${radius}`, () => new THREE.CylinderGeometry(radius, radius, 0.042, 40));
-        const side = this.sharedRes(`chipSide${color}`, () => new THREE.MeshPhysicalMaterial({
+        const geo = this.sharedRes(`chipGeo${radius}`, () => new THREE.CylinderGeometry(radius, radius, 0.042, this.q.budget.chip));
+        const side = this.sharedRes(`chipSide${color}`, () => this.lit({
           map: chipSideTexture(color), roughness: 0.38, clearcoat: 0.6, clearcoatRoughness: 0.3,
         }));
-        const top = this.sharedRes(`chipTop${color}`, () => new THREE.MeshPhysicalMaterial({
-          map: chipFaceTexture(color), roughness: 0.35, clearcoat: 0.7, clearcoatRoughness: 0.25,
+        const top = this.sharedRes(`chipTop${color}`, () => this.lit({
+          map: chipFaceTexture(color, this.q.budget.card / 2), roughness: 0.35, clearcoat: 0.7, clearcoatRoughness: 0.25,
         }));
         const chip = new THREE.Mesh(geo, [side, top, top]);
         chip.position.set(Math.sin(i * 2.7 + amount) * 0.006, 0.022 + i * 0.043, Math.cos(i * 1.9 + amount) * 0.006);
@@ -748,15 +824,15 @@ export class TableRenderer {
         continue;
       }
       const chip = new THREE.Mesh(
-        new THREE.CylinderGeometry(radius, radius, 0.042, 32),
-        new THREE.MeshStandardMaterial({ color, roughness: 0.3, metalness: 0.12 }));
+        this.sharedRes(`plainChipGeo${radius}`, () => new THREE.CylinderGeometry(radius, radius, 0.042, this.q.budget.chip)),
+        this.sharedRes(`plainChip${color}`, () => this.lit({ color, roughness: 0.3, metalness: 0.12 })));
       chip.position.y = 0.022 + i * 0.045;
       chip.castShadow = true;
       group.add(chip);
       if (i % 2 === 0) {
         const stripe = new THREE.Mesh(
-          new THREE.TorusGeometry(radius * 0.82, 0.009, 5, 24),
-          new THREE.MeshBasicMaterial({ color: 0xf5e7bf }));
+          this.sharedRes(`stripeGeo${radius}`, () => new THREE.TorusGeometry(radius * 0.82, 0.009, 5, 24)),
+          this.sharedRes('stripeMat', () => new THREE.MeshBasicMaterial({ color: 0xf5e7bf })));
         stripe.rotation.x = Math.PI / 2;
         stripe.position.y = 0.045 + i * 0.045;
         group.add(stripe);
@@ -910,7 +986,7 @@ export class TableRenderer {
       }
       mat.dispose();
     };
-    for (const m of [this.feltPlain, this.feltDetailed, this.railPlain, this.railDetailed]) disposeMat(m);
+    for (const m of this.surfaceMats || []) disposeMat(m);
     this.scene.traverse((obj) => {
       if (obj.geometry) obj.geometry.dispose();
       if (obj.material) (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(disposeMat);

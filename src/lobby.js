@@ -274,6 +274,13 @@ export class MenuScreen {
 
   renderInvites() {
     if (!this.inviteSection) return;
+    // The inbox is polled every few seconds: rebuild it only when the invites
+    // changed, so a press on Accept/Decline never loses its click to a rebuild
+    // between press and release. A rebuilt menu (language change) gets a new section.
+    const key = JSON.stringify(this.invites.map((i) => [i.id, i.fromUsername]));
+    if (this._invitesShownIn === this.inviteSection && this._invitesKey === key) return;
+    this._invitesShownIn = this.inviteSection;
+    this._invitesKey = key;
     this.inviteSection.textContent = '';
     if (!this.invites.length) {
       this.inviteSection.hidden = true;

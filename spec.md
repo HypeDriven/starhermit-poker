@@ -153,7 +153,9 @@ Above 1600×1000 the shared `ui-scale.js` sets `--ui-scale` (`min(w/1600, h/1000
 - Platform menu: the player chip shows the profile nickname (fallback
   `Player <id prefix>`, never the username) and avatar; **Invite a friend**
   copies `StarHermit.inviteLink()` and confirms in a status line. Seat names
-  use the same nickname rule.
+  use the same nickname rule. The room-invite inbox is polled every 5 s but
+  rebuilt only when its invites change, so an Accept/Decline click is never
+  lost to a rebuild between press and release.
 - Settings KV: the graphics settings (`graphics`) and the sound toggle
   (`soundEnabled`) are mirrored with `PATCH /settings` on change; on sign-in
   the platform values win (`src/platform-prefs.js`). Platform-owned `ui.*`

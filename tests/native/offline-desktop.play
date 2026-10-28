@@ -1,0 +1,29 @@
+# The offline table on a 1280 x 720 window: the guest menu over the casino
+# (How to play opened and closed), Play, a whole match shoving every turn
+# (key A) until the result, New match, and back to the menu.
+# viewport 1280x720
+until 600 =Play
+frames 30
+click =How to play
+until 60 Hand rankings, best to worst
+frames 10
+save menu-help
+click =How to play
+frames 10
+click =Play
+until 600 Pot
+frames 90
+save table-desktop
+repeat 40000 until Winner:
+  key KeyA 2
+  frames 30
+end
+frames 30
+save match-over
+click =New match
+frames 120
+save new-match
+frames 30
+click Leave table
+until 600 =Play
+frames 10

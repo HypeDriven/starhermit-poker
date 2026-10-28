@@ -1,0 +1,17 @@
+# The offline table on a phone (390 x 844 at DPR 3), played by touch: Play,
+# the first hand's actions (bet sizing presets, then all-in every turn) to the
+# match's result.
+# viewport 390x844@3
+until 600 =Play
+frames 30
+save menu-phone
+touch =Play
+until 600 Pot
+frames 120
+save table-phone
+repeat 40000 until Winner:
+  touch =All-in
+  frames 30
+end
+frames 30
+save match-over-phone

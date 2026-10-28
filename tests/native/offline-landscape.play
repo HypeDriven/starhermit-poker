@@ -1,0 +1,16 @@
+# The offline table in short landscape (844 x 390 at DPR 3): the action bar
+# beside the stage; a few hands by keys (check or call, fold).
+# viewport 844x390@3
+until 600 =Play
+frames 30
+save menu-landscape
+touch =Play
+until 600 Pot
+frames 120
+save table-landscape
+repeat 3000 until Hand #3
+  key KeyC 2
+  frames 40
+end
+frames 30
+save table-landscape-later

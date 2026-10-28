@@ -1,137 +1,44 @@
-// Offline mode: when the game is opened without a platform launch token
-// (a plain local load, e.g. `PORT=8803 node server.js`), the player can play
-// a full match against AI seats entirely in the browser. The same
-// server-authoritative script (server.js, `globalThis.game`) is driven by a
-// local host adapter that supplies ctx.now / ctx.random / ctx.room and keeps
-// the returned sessionState between invocations. No network, no sign-in.
+// The offline table: a full match against five AI seats with no network and
+// no sign-in. The same server-authoritative script (server.js,
+// globalThis.game) runs in the client, driven by a local host adapter that
+// supplies ctx.now / ctx.random / ctx.room and keeps the returned
+// sessionState between invocations, exactly as the platform does for a
+// hosted table. The clock and the random source are injected: the engine
+// client passes its fixed-step clock and a seeded stream, so a played
+// table replays exactly (play scripts) — the browser build used Date.now()
+// and Math.random(). A 1 Hz sweep (onTick, server.js's declared tickRateHz)
+// enforces turn deadlines and lets AI seats act while the player watches.
+// Nothing is posted anywhere: offline play is never recorded.
 
-import { currentPlatformStrings } from './platform-i18n.js';
-import { GAME } from './config.js';
-import { seatVisual, seatUnit, presetTotal, describeLogEntry, keepSeatInStage, seatName } from './table-utils.js';
-import { cardEl, describeHandComplete, describeMatchOver, seatBadges, tableStatus, labelActionBar } from './table.js';
-import { settingsButton, closeSettings } from './graphics-panel.js';
-import { el, t, num, serverMessage } from './i18n.js';
+import { TableModel } from './table-model.js';
+import { t } from './i18n.js';
 
-const USER_ID = 'local-player';
-const AI_NAMES = ['Ada', 'Ben', 'Cleo', 'Dex', 'Eva'];
-// How long showdown cards stay revealed on the seat overlays after a hand.
-const REVEAL_WINDOW_MS = 8000;
-// The feed shows only the latest few lines — no scrolling, fits the screen.
-const FEED_CAP = 3;
+export const USER_ID = 'local-player';
+export const AI_NAMES = ['Ada', 'Ben', 'Cleo', 'Dex', 'Eva'];
+export const OFFLINE_CONFIG = Object.freeze({
+  startingStack: 10000, smallBlind: 50, bigBlind: 100, turnDurationSeconds: 30,
+});
+export const TICK_MS = 1000;
 
-// The local player's display name in results (the script knows it as "You").
-const winnerLabel = (userId, name) => (userId === USER_ID ? t('You') : name);
-
-// ---------------------------------------------------------------------------
-// Local menu: the cold-load landing when no platform launch happened.
-
-export class LocalMenuScreen {
-  // ctx: { root, onPlayOffline(), onShowSignIn(), notice?, onRelaunch()? → bool }
-  constructor(ctx) {
-    this.ctx = ctx;
-  }
-
-  show() {
-    const { root } = this.ctx;
-    root.textContent = '';
-    this.destroyed = false;
-    // Cinematic 3D casino behind the menu (same scene as the platform menu).
-    // Loaded dynamically; without WebGL or the CDN the CSS backdrop remains.
-    const stage = el('div', { class: 'menu3d-stage' });
-    root.append(stage);
-    import('./menu3d.js').then(({ MenuScene3D }) => {
-      if (this.destroyed) return;
-      this.scene3d = new MenuScene3D(stage);
-      if (this.scene3d.failed) this.scene3d = null;
-    }).catch(() => { /* no 3D: the CSS background carries the menu */ });
-    this.card = this.buildCard();
-    root.append(this.card);
-  }
-
-  // Language change: rebuild the menu card in place (the 3D scene stays).
-  relocalize() {
-    if (this.destroyed || !this.card) return;
-    const old = this.card;
-    this.card = this.buildCard();
-    old.replaceWith(this.card);
-  }
-
-  buildCard() {
-    // noticeFn (preferred): the notice in the current language; notice: fixed text.
-    const notice = this.ctx.noticeFn ? this.ctx.noticeFn() : this.ctx.notice;
-    return el('div', { class: 'screen main-menu cinematic' },
-      el('h1', { text: 'StarHermit Poker' }),
-      el('p', {
-        class: 'muted',
-        i18n: 'No-limit Texas Hold\'em. Play an offline table against five AI opponents — no sign-in needed.',
-      }),
-      ...(notice ? [el('p', { class: 'muted bold', role: 'status', text: notice })] : []),
-      el('div', { class: 'menu-actions' },
-        // Session expired: a fresh launch from StarHermit is the only way back
-        // online. relaunch() navigates the launcher's top window, which needs
-        // this click's user gesture.
-        ...(this.ctx.onRelaunch ? [el('button', {
-          class: 'primary big', type: 'button', text: currentPlatformStrings().relaunch,
-          'data-action': 'starhermit-relaunch',
-          onclick: (ev) => {
-            if (this.ctx.onRelaunch()) return;
-            const note = ev.currentTarget.closest('.screen').querySelector('[role="status"]');
-            if (note) note.textContent = currentPlatformStrings().relaunchFailed;
-          },
-        })] : []),
-        el('button', {
-          class: this.ctx.onRelaunch ? 'big' : 'primary big', type: 'button', i18n: 'Play',
-          onclick: () => this.ctx.onPlayOffline(),
-        }),
-        ...(this.ctx.canSignIn && this.ctx.canSignIn() ? [el('button', {
-          type: 'button', text: currentPlatformStrings().signIn, 'data-action': 'starhermit-sign-in',
-          onclick: () => this.ctx.onSignIn(),
-        })] : []),
-        el('button', {
-          type: 'button', i18n: 'Multiplayer sign-in',
-          onclick: () => this.ctx.onShowSignIn(),
-        }),
-        settingsButton(),
-      ),
-      el('p', {
-        class: 'muted small',
-        i18n: 'Multiplayer is available when the game is launched from the StarHermit platform, or via a development launch token.',
-      }),
-    );
-  }
-
-  destroy() {
-    this.destroyed = true;
-    closeSettings();
-    if (this.scene3d) {
-      this.scene3d.destroy();
-      this.scene3d = null;
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Offline table: drives globalThis.game (server.js) with a local host adapter.
-
-export class LocalTableScreen {
-  // ctx: { root, onExitToMenu(), onRematch() }
-  constructor(ctx) {
-    this.ctx = ctx;
-    this.gameState = null;      // last 'state' broadcast { you, publicState }
-    this.feedItems = [];
-    this.seenLogSeq = -1;
-    this.revealUntil = 0;
-    this.destroyed = false;
-    this.sessionState = null;   // document owned by the game script
+export class OfflineTable {
+  /**
+   * game: server.js's globalThis.game; now(): ms; random(): [0, 1).
+   */
+  constructor({ game, now, random }) {
+    this.game = game;
+    this.now = now;
+    this.random = random;
+    this.sessionState = null;
     this.playerStates = {};
+    this.lastTick = 0;
+    this.error = null;           // the last rejection (English, from server.js)
+    this.model = new TableModel({
+      now,
+      nameOf: (w, youSeat) => (w.userId === USER_ID || (w.userId === undefined && w.seat === youSeat) ? t('You') : null),
+    });
     this.room = {
       roomId: 'local-room',
-      metadata: {
-        startingStack: GAME.startingStack,
-        smallBlind: GAME.smallBlind,
-        bigBlind: GAME.bigBlind,
-        turnDurationSeconds: GAME.turnDurationSeconds,
-      },
+      metadata: { ...OFFLINE_CONFIG },
       roster: [
         { userId: USER_ID, name: 'You', team: 0, slot: 0 },
         ...AI_NAMES.map((name, i) => ({ userId: null, name, team: 0, slot: i + 1, ai: true })),
@@ -139,18 +46,17 @@ export class LocalTableScreen {
     };
   }
 
-  // One script invocation with a fresh host context. The script only ever
-  // reads ctx.now / ctx.random / ctx.room / ctx.presence / ctx.message and the
-  // carried sessionState / playerStates documents.
+  /** Deals the first hand. */
+  start() {
+    this.lastTick = this.now();
+    this.invoke('createSession');
+  }
+
+  // One script invocation with a fresh host context, as the platform makes it.
   invoke(fn, extra = {}) {
-    const engine = globalThis.game;
-    if (!engine) {
-      this.showError(t('The game script (server.js) is not loaded.'));
-      return null;
-    }
-    const res = engine[fn]({
-      now: Date.now(),
-      random: Math.random(),
+    const res = this.game[fn]({
+      now: this.now(),
+      random: this.random(),
       sessionId: 'local-session',
       players: [],
       sessionState: this.sessionState,
@@ -167,317 +73,28 @@ export class LocalTableScreen {
     return res;
   }
 
-  // Deliver broadcasts addressed to the local player (or to everyone).
+  /** Broadcasts addressed to the local player (or to everyone), in order. */
   dispatch(broadcast) {
     for (const entry of broadcast) {
-      const mine = entry.to === 'all' ||
-        (Array.isArray(entry.to) && entry.to.includes(USER_ID));
-      if (!mine) continue;
-      const msg = entry.data;
-      if (!msg || typeof msg !== 'object') continue;
-      if (msg.type === 'state') {
-        this.gameState = msg;
-        this.syncFeedFromLog(msg.publicState);
-      } else if (msg.type === 'hand-started') {
-        this.pushEvent(() => t('Hand #{n} began.', { n: msg.handNumber }));
-      } else if (msg.type === 'hand-complete') {
-        const youSeat = this.gameState?.you?.seat;
-        this.pushEvent(() => describeHandComplete(msg, (w) => (w.seat === youSeat ? t('You') : null)), 'win');
-        this.revealUntil = Date.now() + REVEAL_WINDOW_MS;
-      } else if (msg.type === 'match-complete') {
-        const r = msg.result;
-        this.pushEvent(() => describeMatchOver(r && winnerLabel(r.winnerUserId, r.winnerName)), 'win');
-      }
+      const mine = entry.to === 'all' || (Array.isArray(entry.to) && entry.to.includes(USER_ID));
+      if (mine) this.model.receive(entry.data);
     }
-    this.render();
   }
 
-  // --- script command channel ----------------------------------------------
-
-  sendCommand(data) {
+  /** A command from the player: fold, check, call, bet/raise (new round total), all-in. */
+  send(data) {
     const res = this.invoke('onPlayerMessage', { message: { from: USER_ID, data } });
-    if (res && res.ok === false && res.error) this.showError(res.error);
+    this.error = res && res.ok === false && res.error ? res.error : null;
+    return !this.error;
   }
 
-  act(type, amount) {
-    const cmd = amount !== undefined ? { type, amount } : { type };
-    this.sendCommand(cmd);
-  }
+  get over() { return !!(this.model.pub && this.model.pub.matchResult); }
 
-  actCheckCall() {
-    const la = this.gameState?.you?.legalActions;
-    if (!la) return;
-    this.act(la.callAmount > 0 ? 'call' : 'check');
-  }
-
-  actBetRaise() {
-    const pub = this.gameState?.publicState;
-    const la = this.gameState?.you?.legalActions;
-    if (!pub || !la) return;
-    const amount = Number(this.amountInput.value) || 0;
-    this.act(pub.currentBet === 0 ? 'bet' : 'raise', amount);
-  }
-
-  preset(kind) {
-    const pub = this.gameState?.publicState;
-    const la = this.gameState?.you?.legalActions;
-    if (!pub || !la) return;
-    const me = pub.seats[this.gameState.you.seat];
-    this.amountInput.value = presetTotal(la, me.roundCommit, pub.pot, kind);
-    this.renderAmount();
-  }
-
-  // --- view ------------------------------------------------------------------
-
-  show() {
-    const { root } = this.ctx;
-    root.textContent = '';
-
-    this.statusLine = el('div', { class: 'table-status muted small', 'aria-live': 'polite' });
-    this.centerInfo = el('div', { class: 'table-center' });
-    this.feed = el('div', { class: 'event-feed', 'aria-live': 'polite' });
-    this.errorLine = el('p', { class: 'error', hidden: '', role: 'alert' });
-    this.seatOverlay = el('div', { class: 'seat-overlay' });
-    this.glContainer = el('div', { class: 'gl-stage' });
-
-    const stage = el('div', { class: 'table-stage game-board' },
-      this.glContainer, this.seatOverlay, this.centerInfo);
-
-    this.foldBtn = el('button', { type: 'button', i18n: 'Fold', onclick: () => this.act('fold') });
-    this.checkCallBtn = el('button', { type: 'button', onclick: () => this.actCheckCall() });
-    this.betRaiseBtn = el('button', { class: 'primary', type: 'button', onclick: () => this.actBetRaise() });
-    this.allInBtn = el('button', { type: 'button', i18n: 'All-in', onclick: () => this.act('all-in') });
-    this.amountInput = el('input', { type: 'range', class: 'bet-slider', i18nAria: 'Bet or raise total' });
-    this.amountLabel = el('span', { class: 'bet-amount' });
-    this.presets = el('div', { class: 'bet-presets' });
-    for (const [label, fn] of [
-      ['preset.min', () => this.preset('min')],
-      ['preset.half', () => this.preset(0.5)],
-      ['preset.three-quarters', () => this.preset(0.75)],
-      ['preset.pot', () => this.preset(1)],
-      ['preset.all-in', () => this.preset('all')],
-    ]) {
-      this.presets.append(el('button', { type: 'button', class: 'preset', i18n: label, onclick: fn }));
-    }
-
-    const actionBar = el('div', { class: 'action-bar' },
-      el('div', { class: 'action-buttons' }, this.foldBtn, this.checkCallBtn, this.betRaiseBtn, this.allInBtn),
-      el('div', { class: 'bet-controls' }, this.amountInput, this.amountLabel, this.presets));
-
-    const leaveBtn = el('button', {
-      type: 'button', i18n: 'Leave table', onclick: () => this.ctx.onExitToMenu(),
-    });
-
-    this.screen = el('div', { class: 'table-screen' },
-      el('div', { class: 'table-topbar' }, this.statusLine, settingsButton('compact')),
-      stage, actionBar, this.feed, this.errorLine, leaveBtn);
-    root.append(this.screen);
-
-    // The 3D table (same renderer as online play). Optional: without WebGL
-    // or the three.js CDN the DOM table below is the whole game.
-    import('./table3d.js').then(({ TableRenderer }) => {
-      if (this.destroyed) return;
-      try {
-        this.renderer3d = new TableRenderer(this.glContainer);
-        stage.classList.add('has-3d');
-        this.render();
-      } catch { this.renderer3d = null; }
-    }).catch(() => { /* text-mode table */ });
-
-    this.timerInterval = setInterval(() => this.renderTimer(), 250);
-    // 1 Hz sweep, matching the script's declared tickRateHz: enforces turn
-    // deadlines and lets AI seats act while the player watches.
-    this.tickInterval = setInterval(() => {
-      if (!this.destroyed && !this.gameState?.publicState?.matchResult) this.invoke('onTick');
-    }, 1000);
-
-    this.invoke('createSession');
-    this.render();
-  }
-
-  render() {
-    if (this.destroyed || !this.statusLine) return;
-    const gs = this.gameState;
-    const pub = gs?.publicState;
-    const you = gs?.you;
-
-    this.statusLine.textContent = tableStatus(pub);
-
-    this.centerInfo.textContent = '';
-    if (pub) {
-      this.centerInfo.append(
-        el('div', { class: 'pot-display', text: t('Pot {n}', { n: num(pub.pot) }) }),
-      );
-      if (pub.board && pub.board.length) {
-        this.centerInfo.append(el('div', { class: 'board-cards' },
-          ...pub.board.map(cardEl)));
-      }
-      if (pub.matchResult) {
-        this.centerInfo.append(el('div', {
-          class: 'match-result',
-          text: t('Winner: {name}', { name: winnerLabel(pub.matchResult.winnerUserId, pub.matchResult.winnerName) || '–' }),
-        }), el('button', {
-          class: 'primary', type: 'button', i18n: 'New match',
-          onclick: () => this.ctx.onRematch(),
-        }));
-      }
-    }
-
-    // Seat overlays.
-    this.seatOverlay.textContent = '';
-    if (pub) {
-      const youSeat = you && you.seat >= 0 ? you.seat : 0;
-      const seatCount = pub.seats.length || 6;
-      // Showdown cards stay face-up on the seat panels for a short window
-      // after the hand (the next hand may already have started).
-      const reveal = this.revealUntil > Date.now() && pub.prevHand
-        ? pub.prevHand.reveal : null;
-      for (const s of pub.seats) {
-        const v = seatVisual(s.seat, youSeat, seatCount);
-        const { x, y } = seatUnit(v, seatCount);
-        const seatEl = el('div', {
-          class: 'seat-panel' +
-            (s.seat === pub.actingSeat ? ' acting' : '') +
-            (s.userId === USER_ID ? ' self' : '') +
-            (s.folded || s.eliminated ? ' dim' : ''),
-        });
-        seatEl.style.left = `${50 + x * 44}%`;
-        seatEl.style.top = `${50 + y * 44}%`;
-        const badges = seatBadges(s, pub, { offline: false });
-        seatEl.append(
-          el('div', { class: 'seat-title', text: seatName(s) }),
-          el('div', { class: 'seat-stack', text: num(s.stack) }),
-          s.roundCommit > 0
-            ? el('div', { class: 'seat-bet', text: t('bet {n}', { n: num(s.roundCommit) }) })
-            : '',
-          badges.length ? el('div', { class: 'seat-flags', text: badges.join(' ') }) : '',
-          s.seat === pub.actingSeat ? el('div', { class: 'seat-timer' }) : '',
-        );
-        // The local player's own hole cards (only ever their own).
-        if (s.userId === USER_ID && you && Array.isArray(you.holeCards)) {
-          seatEl.append(el('div', { class: 'seat-cards' }, ...you.holeCards.map(cardEl)));
-        }
-        const shown = reveal && reveal[s.seat];
-        if (shown) {
-          seatEl.append(el('div', { class: 'seat-reveal' }, ...shown.map(cardEl)));
-        }
-        this.seatOverlay.append(seatEl);
-        keepSeatInStage(seatEl, y);
-      }
-    }
-
-    if (this.renderer3d && pub) this.renderer3d.update(pub, you);
-
-    this.renderActionBar();
-    this.renderTimer();
-  }
-
-  renderAmount() {
-    this.amountLabel.textContent = num(Number(this.amountInput.value) || 0);
-  }
-
-  renderActionBar() {
-    const la = this.gameState?.you?.legalActions;
-    const pub = this.gameState?.publicState;
-    const myTurn = !!la;
-    for (const btn of [this.foldBtn, this.checkCallBtn, this.betRaiseBtn, this.allInBtn]) {
-      btn.disabled = !myTurn;
-    }
-    this.amountInput.disabled = !myTurn;
-    labelActionBar(this, la, pub);
-
-    if (!myTurn) {
-      this.amountLabel.textContent = '';
-      return;
-    }
-
-    this.foldBtn.disabled = !la.canFold;
-    this.checkCallBtn.disabled = !(la.canCheck || la.callAmount > 0);
-
-    const canAggro = pub.currentBet === 0 ? la.canBet : la.canRaise;
-    this.betRaiseBtn.disabled = !canAggro;
-    this.allInBtn.disabled = la.canAllIn === false || la.maximumAmount <= 0;
-
-    this.amountInput.min = la.minimumAmount;
-    this.amountInput.max = la.maximumAmount;
-    if (!this.amountInput.value || Number(this.amountInput.value) < la.minimumAmount) {
-      this.amountInput.value = la.minimumAmount;
-    }
-    this.amountInput.oninput = () => this.renderAmount();
-    this.renderAmount();
-  }
-
-  renderTimer() {
-    if (this.destroyed) return;
-    // Expire the showdown reveal window even when no new state arrives.
-    if (this.revealUntil && Date.now() >= this.revealUntil) {
-      this.revealUntil = 0;
-      this.render();
-      return;
-    }
-    const pub = this.gameState?.publicState;
-    if (!pub || !pub.turnDeadlineMs || pub.actingSeat < 0) return;
-    // turnDeadlineMs comes from the script's ctx.now clock — Date.now() here.
-    const remaining = Math.max(0, pub.turnDeadlineMs - Date.now());
-    const seconds = Math.ceil(remaining / 1000);
-    const panels = this.seatOverlay?.querySelectorAll('.seat-panel.acting .seat-timer');
-    if (panels) {
-      for (const p of panels) p.textContent = `${seconds}s`;
-    }
-  }
-
-  // Fold/street/action lines are rebuilt from publicState.recentLog so they
-  // survive screen redraws; dedup by monotonically increasing action seq.
-  syncFeedFromLog(pub) {
-    if (!pub || !Array.isArray(pub.recentLog)) return;
-    for (const entry of pub.recentLog) {
-      if (!Array.isArray(entry) || entry[0] <= this.seenLogSeq) continue;
-      this.seenLogSeq = entry[0];
-      const seats = pub.seats;
-      this.pushEvent(() => describeLogEntry(entry, seats));
-    }
-  }
-
-  // text: a function returning the line in the current language, or a string.
-  pushEvent(text, cls = '') {
-    this.feedItems.push({ text, cls });
-    while (this.feedItems.length > FEED_CAP) this.feedItems.shift();
-    this.renderFeed();
-  }
-
-  renderFeed() {
-    if (!this.feed) return;
-    this.feed.textContent = '';
-    for (const item of this.feedItems.slice().reverse()) {
-      const text = typeof item.text === 'function' ? item.text() : item.text;
-      this.feed.append(el('div', { class: `feed-item${item.cls ? ' ' + item.cls : ''}`, text }));
-    }
-  }
-
-  // Language change: static labels re-apply through data-i18n; the rest here.
-  relocalize() {
-    if (this.destroyed) return;
-    this.renderFeed();
-    this.render();
-    if (this.lastError && this.errorLine && !this.errorLine.hidden) this.errorLine.textContent = serverMessage(this.lastError);
-  }
-
-  showError(message) {
-    if (!this.errorLine) return;
-    this.lastError = message;
-    this.errorLine.textContent = serverMessage(message);
-    this.errorLine.hidden = false;
-    setTimeout(() => { if (this.errorLine) this.errorLine.hidden = true; }, 4000);
-  }
-
-  destroy() {
-    this.destroyed = true;
-    closeSettings();
-    if (this.timerInterval) clearInterval(this.timerInterval);
-    if (this.tickInterval) clearInterval(this.tickInterval);
-    if (this.renderer3d) {
-      this.renderer3d.dispose();
-      this.renderer3d = null;
-    }
+  /** Called every frame: the 1 Hz sweep on the injected clock. */
+  update() {
+    const now = this.now();
+    if (now - this.lastTick < TICK_MS) return;
+    this.lastTick = now;
+    if (!this.over) this.invoke('onTick');
   }
 }

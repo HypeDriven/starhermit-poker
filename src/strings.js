@@ -316,6 +316,12 @@ const ROWS = [
   ['Back to menu', 'Zurück zum Menü', 'Volver al menú', 'Retour au menu', 'Voltar ao menu', 'Torna al menu'],
   ['All three fields are required.', 'Alle drei Felder sind Pflicht.', 'Los tres campos son obligatorios.', 'Les trois champs sont obligatoires.', 'Os três campos são obrigatórios.', 'Tutti e tre i campi sono obbligatori.'],
   ['Could not mint a launch token: {error}', 'Starttoken konnte nicht erstellt werden: {error}', 'No se pudo generar el token de lanzamiento: {error}', 'Impossible de générer un jeton de lancement : {error}', 'Não foi possível gerar o token de lançamento: {error}', 'Impossibile generare il token di avvio: {error}'],
+  // engine client (the runtime's Options replaced the Settings panel; online play is a StarHermit sign-in)
+  ['Settings', 'Einstellungen', 'Configuración', 'Paramètres', 'Configurações', 'Impostazioni'],
+  ['Close', 'Schließen', 'Cerrar', 'Fermer', 'Fechar', 'Chiudi'],
+  ['Sign in with StarHermit to play online tables, with friends or against AI, on the leaderboard.', 'Melde dich bei StarHermit an, um an Online-Tischen zu spielen – mit Freunden oder gegen die KI, mit Bestenliste.', 'Inicia sesión con StarHermit para jugar en mesas en línea, con amigos o contra la IA, en la clasificación.', 'Connectez-vous avec StarHermit pour jouer à des tables en ligne, avec des amis ou contre l’IA, au classement.', 'Entre com a StarHermit para jogar em mesas online, com amigos ou contra a IA, no ranking.', 'Accedi con StarHermit per giocare ai tavoli online, con amici o contro l’IA, in classifica.'],
+  ['Voice is unavailable right now.', 'Sprachchat ist gerade nicht verfügbar.', 'La voz no está disponible en este momento.', 'La voix n’est pas disponible pour le moment.', 'A voz não está disponível no momento.', 'La voce al momento non è disponibile.'],
+  ['Could not load the chat.', 'Der Chat konnte nicht geladen werden.', 'No se pudo cargar el chat.', 'Impossible de charger le chat.', 'Não foi possível carregar o chat.', 'Impossibile caricare la chat.'],
 ];
 
 const COLS = ['de-DE', 'es-419', 'fr-FR', 'pt-BR', 'it-IT'];
@@ -324,6 +330,9 @@ const [DE, ES, FR, PT, IT] = COLS.map((_, i) => table(i));
 
 const ES_ES = {
   ...ES,
+  'Settings': 'Ajustes',
+  'Sign in with StarHermit to play online tables, with friends or against AI, on the leaderboard.': 'Inicia sesión con StarHermit para jugar en mesas en línea, con amigos o contra la IA, en la clasificación.',
+  'Could not load the chat.': 'No se ha podido cargar el chat.',
   'Hand #{n} began.': 'Ha empezado la mano #{n}.',
   'The hand ended.': 'La mano ha terminado.',
   'The match is over — {name} won.': 'La partida ha terminado: ha ganado {name}.',
@@ -357,6 +366,7 @@ const ES_ES = {
 
 const FR_CA = {
   ...FR,
+  'Could not load the chat.': 'Impossible de charger le clavardage.',
   'Replays': 'Reprises', 'Replay': 'Reprise', 'Loading replay…': 'Chargement de la reprise…',
   'Replay unavailable': 'Reprise non disponible',
   'Could not load replays: {error}': 'Impossible de charger les reprises : {error}',

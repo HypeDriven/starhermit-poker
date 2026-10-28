@@ -1,12 +1,9 @@
-// StarHermit Poker — game language. One source for every string module (this
-// file; gfx-i18n.js and platform-i18n.js read getLocale()): sh-language.js
-// resolves the Language setting — explicit game choice (ui.language) → for
-// Automatic the StarHermit account's preferred language → navigator.languages
-// → en-US. Strings are keyed by their en-US text (strings.js); EN holds the
-// symbolic keys. A change re-applies static markup (data-i18n, data-i18n-aria,
-// data-i18n-title, data-i18n-placeholder) and fires the listeners; app.js then
-// asks the current screen to re-render its dynamic text. Sockets, rooms and the
-// hand in progress are never touched.
+// StarHermit Poker — the game language: string lookup, number grouping and the
+// rules engine's English (hand descriptions, rejections) in the player's
+// language. Pure (no DOM, no host): the engine client (native/i18n.ts) sets the
+// locale from the runtime's interface language, and the node tests drive it
+// directly. Strings are keyed by their en-US text (strings.js); EN holds the
+// symbolic keys.
 
 import { STRINGS, EN } from './strings.js';
 
@@ -25,58 +22,38 @@ export function t(key, vars) {
 
 export function getLocale() { return locale; }
 
-/** Locale-aware number grouping. */
-export function num(n) { return Number(n || 0).toLocaleString(locale); }
+// Digit grouping per locale, as the browsers' toLocaleString wrote it (es-ES and
+// it-IT leave four-digit numbers ungrouped; fr-FR groups with a narrow no-break
+// space, fr-CA with a no-break space).
+const GROUP = {
+  'en-US': [',', 1], 'en-GB': [',', 1], 'es-419': [',', 1], 'es-ES': ['.', 2], 'de-DE': ['.', 1],
+  'fr-FR': [' ', 1], 'fr-CA': [' ', 1], 'pt-BR': ['.', 1], 'it-IT': ['.', 2],
+};
+/** Locale-aware integer grouping (chip counts are whole numbers). */
+export function num(n) {
+  const v = Math.round(Number(n) || 0);
+  const neg = v < 0;
+  const digits = String(Math.abs(v));
+  const [sep, minGroups] = GROUP[locale] || GROUP['en-US'];
+  if (digits.length <= 3 || (minGroups === 2 && digits.length < 5)) return (neg ? '-' : '') + digits;
+  let out = '';
+  for (let i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 === 0) out += sep;
+    out += digits[i];
+  }
+  return (neg ? '-' : '') + out;
+}
 
 /** fn(locale) after every language change; returns an unsubscribe function. */
 export function onLocaleChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
-
-const varsOf = (n) => { try { return n.dataset.i18nVars ? JSON.parse(n.dataset.i18nVars) : undefined; } catch { return undefined; } };
-
-/** Re-apply static markup under root. */
-export function applyStatic(root = typeof document !== 'undefined' ? document : null) {
-  if (!root) return;
-  for (const n of root.querySelectorAll('[data-i18n]')) n.textContent = t(n.dataset.i18n, varsOf(n));
-  for (const n of root.querySelectorAll('[data-i18n-aria]')) n.setAttribute('aria-label', t(n.dataset.i18nAria));
-  for (const n of root.querySelectorAll('[data-i18n-title]')) n.setAttribute('title', t(n.dataset.i18nTitle));
-  for (const n of root.querySelectorAll('[data-i18n-placeholder]')) n.setAttribute('placeholder', t(n.dataset.i18nPlaceholder));
-}
 
 export function setLocale(next) {
   const resolved = LOCALES.includes(next) ? next : 'en-US';
   const changed = resolved !== locale;
   locale = resolved;
   table = STRINGS[locale] || STRINGS['en-US'];
-  if (typeof document === 'undefined') return;
-  document.documentElement.lang = locale;
-  if (document.readyState !== 'loading') applyStatic();
   if (changed) for (const fn of [...listeners]) { try { fn(locale); } catch (e) { console.error(e); } }
-}
-
-/**
- * DOM builder shared by the screens. Besides class/text/on*, it takes
- * i18n (key, or [key, vars]) for text, i18nAria / i18nTitle / i18nPlaceholder
- * for attributes — the node keeps the key so a language change re-applies it.
- * false / null attributes are skipped, true sets an empty attribute.
- */
-export function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') node.className = v;
-    else if (k === 'text') node.textContent = v;
-    else if (k === 'i18n') {
-      const [key, vars] = Array.isArray(v) ? v : [v];
-      node.dataset.i18n = key;
-      if (vars) node.dataset.i18nVars = JSON.stringify(vars);
-      node.textContent = t(key, vars);
-    } else if (k === 'i18nAria') { node.dataset.i18nAria = v; node.setAttribute('aria-label', t(v)); }
-    else if (k === 'i18nTitle') { node.dataset.i18nTitle = v; node.setAttribute('title', t(v)); }
-    else if (k === 'i18nPlaceholder') { node.dataset.i18nPlaceholder = v; node.setAttribute('placeholder', t(v)); }
-    else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
-    else if (v !== false && v != null) node.setAttribute(k, v === true ? '' : v);
-  }
-  node.append(...children);
-  return node;
+  return locale;
 }
 
 /** Betting street (preflop / flop / turn / river / showdown) for status lines. */
@@ -119,14 +96,4 @@ export function serverMessage(msg) {
   if ((m = /^Minimum raise total is (\d+)$/.exec(s))) return t('Minimum raise total is {n}', { n: num(m[1]) });
   if ((m = /^Unknown (action|command): ?(.*)$/.exec(s))) return t('Unknown command: {name}', { name: m[2] });
   return t(s);
-}
-
-// sh-language.js (classic script loaded before the modules) owns resolution,
-// storage and the Settings → Language selector; it calls apply() now and on changes.
-export const language = (typeof window !== 'undefined' && window.StarHermitLanguage)
-  ? window.StarHermitLanguage.create({ game: 'poker', supported: LOCALES, apply: setLocale })
-  : null;
-if (!language) setLocale('en-US');
-if (typeof document !== 'undefined' && document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => applyStatic(), { once: true });
 }

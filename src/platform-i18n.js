@@ -153,31 +153,3 @@ export function platformStrings(locale) {
 export function currentPlatformStrings(locale) {
   return platformStrings(pickPlatformLocale(locale || getLocale()));
 }
-
-/**
- * Local-menu additions after the SDK signed out ({ signedIn:false, reason }):
- * a notice, plus onRelaunch() (→ StarHermit.relaunch(), from a click) when the
- * session expired — only a fresh launch from StarHermit can mint a new token.
- */
-export function signedOutMenu(auth, sh, locale) {
-  // notice: the text now; noticeFn: the text in the current game language
-  // (the menu re-reads it after a language change).
-  const t = () => currentPlatformStrings(locale);
-  if (auth && auth.reason === "expired" && sh && typeof sh.relaunch === "function") {
-    return { notice: t().expired, noticeFn: () => t().expired, onRelaunch: () => !!sh.relaunch() };
-  }
-  return { notice: t().signedOut, noticeFn: () => t().signedOut };
-}
-
-/**
- * Local-menu additions when online play stopped because the player must
- * accept updated StarHermit terms: the notice plus "Back to StarHermit".
- */
-export function termsRequiredMenu(sh, locale) {
-  const t = () => currentPlatformStrings(locale);
-  return {
-    notice: t().termsRequired,
-    noticeFn: () => t().termsRequired,
-    ...(sh && typeof sh.relaunch === "function" ? { onRelaunch: () => !!sh.relaunch() } : {}),
-  };
-}

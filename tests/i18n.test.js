@@ -1,5 +1,5 @@
-// Every player-facing key used in markup (index.html data-i18n) and code
-// (t('…') / i18n: '…' / i18nAria / i18nTitle / i18nPlaceholder, plus the
+// Every player-facing key used in the engine client (native/*.ts: T('…'), N('…'))
+// and the shared modules (src/*.js: t('…'), plus the
 // symbolic keys built at runtime: streets, room states, badges, hand names,
 // rule rejections) exists in all nine locales with the same {placeholders}.
 // DUMP=1 lists the keys.
@@ -31,15 +31,14 @@ export const SERVER_MESSAGES = [
 
 export function usedKeys() {
   const keys = new Set();
-  for (const m of read('index.html').matchAll(/data-i18n(?:-aria|-placeholder|-title)?="([^"]*)"/g)) keys.add(m[1]);
-  const files = readdirSync(new URL('../src/', import.meta.url)).filter((f) => f.endsWith('.js'))
-    .filter((f) => !['strings.js', 'gfx-i18n.js', 'platform-i18n.js'].includes(f));
-  for (const f of files) {
-    const src = read('src/' + f);
+  const srcFiles = readdirSync(new URL('../src/', import.meta.url)).filter((f) => f.endsWith('.js'))
+    .filter((f) => !['strings.js', 'platform-i18n.js'].includes(f)).map((f) => 'src/' + f);
+  const nativeFiles = readdirSync(new URL('../native/', import.meta.url)).filter((f) => f.endsWith('.ts')).map((f) => 'native/' + f);
+  for (const f of [...srcFiles, ...nativeFiles]) {
+    const src = read(f);
     const re = [
-      new RegExp(`(?<![\\w.])(?:t|tr)\\(\\s*${lit}`, 'g'),
-      new RegExp(`\\bi18n(?:Aria|Title|Placeholder)?: \\[?${lit}`, 'g'),
-      new RegExp(`\\bi18n(?:Aria|Title|Placeholder)?: [^,\\n]*?\\?\\s*${lit}\\s*:\\s*${lit}`, 'g'),
+      new RegExp(`(?<![\\w.])(?:t|tr|T|N)\\(\\s*${lit}`, 'g'),
+      new RegExp(`(?<![\\w.])(?:t|T)\\(\\s*[^,()]*?\\?\\s*${lit}\\s*:\\s*${lit}`, 'g'),
     ];
     for (const r of re) {
       for (const m of src.matchAll(r)) {
@@ -48,13 +47,11 @@ export function usedKeys() {
       }
     }
   }
-  const lobby = read('src/lobby.js');
-  for (const m of lobby.slice(lobby.indexOf('const HAND_RANKINGS'), lobby.indexOf('function helpPanel')).matchAll(new RegExp(lit, 'g'))) keys.add(unq(m));
-  for (const k of ['Unready', 'Ready', 'Friends: on', 'Friends: off', 'Checking session…']) keys.add(k);
+  for (const k of ['Unready', 'Ready', 'Friends: on', 'Friends: off']) keys.add(k);
   for (const k of SERVER_MESSAGES) keys.add(k);
   for (const k of Object.keys(EN)) keys.add(k);
-  // dynamic prefixes are covered by EN (street.*, room.*, …); drop the bare prefixes
-  for (const k of [...keys]) if (k === '' || /^[\w-]+\.$/.test(k)) keys.delete(k);
+  // dynamic prefixes are covered by EN (street.*, room.*, …); drop the bare prefixes and template keys
+  for (const k of [...keys]) if (k === '' || /^[\w-]+\.$/.test(k) || k.includes('${')) keys.delete(k);
   return keys;
 }
 

@@ -11,9 +11,9 @@ table's match and nothing else.
 
 ## Architecture
 
-- **Client** — no-build static site (`index.html` + ES modules, three.js via
-  CDN import map). Served same-origin at the game's StarHermit subdomain with
-  `/api` and `/ws` proxied; no CORS, no API-base configuration in production.
+- **Client** — a StarHermit engine script game (`native/*.ts` on the host API, engine 1.19.3, minor 20), played
+  natively in the StarHermit client and in browsers through the engine's web runtime (`index.html` is the loader
+  `npm run package` writes). See `spec.md`.
 - **Server authority** — `server.js`, a single JavaScript file executed per
   invocation in the platform's sandboxed Jint engine. It owns the deck,
   dealing, betting, side pots, hand evaluation, showdown, turn timers, AI
@@ -43,40 +43,25 @@ table's match and nothing else.
 
 | Path | What it is |
 |---|---|
-| `starhermit.txt` | Platform manifest (name/slug/launch/owner/server) |
+| `starhermit.txt` | Manifest (engine pin, controls, `server=server.js`) |
 | `server.js` | The entire server-authoritative game (Jint script) + shared `pokerRules` |
-| `index.html` | Entry point (import map; loads `server.js` for replay rules) |
-| `src/` | Client modules (net, rooms, game socket, table, chat, voice, …) |
-| `tests/` | `node:test` suites; `server.js` is loaded via `vm` exactly as the sandbox sees it |
-| `docs/integration-plan.md` | Verified API contract notes and checkpoint plan |
+| `native/` | The engine client (screens, 3D table and casino, platform, audio) |
+| `src/` | Pure modules shared with the node tests (offline table, online clients, table model, strings) |
+| `tests/` | `node:test` suites, `tests/native/*.play` and `tests/online/*.play` play scripts, `tests/native.mjs` |
+| `tools/` | Packaging, CSS conversion, texture baking, browser and online checks |
 
 ## Local development
 
-1. Run the StarHermit backend locally (`http://localhost:5000`, or `5050` in
-   some setups).
-2. Serve this repo: `python3 -m http.server 8080` (any static server works).
-3. Open `http://localhost:8080/index.html` — with no `#game_token` in the URL
-   you land on the local menu, whose **Play** starts an offline table against
-   AI seats (the same `server.js` rules driven in-browser, no network or
-   sign-in). The local-dev auth panel is also available: paste a full platform
-   JWT, keep the API base at `http://localhost:5000`, and mint a launch token. The token is
-   cached in `sessionStorage` for the tab (documented dev pattern);
-   production tokens never touch storage.
-4. Two browsers (or an incognito window) can share a table: Quick Play joins
-   the same open room; Private Table + friend invite works between two
-   accounts that are friends.
-
-Tests and checks:
-
 ```bash
-npm test          # node --test tests/*.test.js (186 tests, zero dependencies)
-npm run test:e2e  # headless-Chrome playthrough of the offline table (dev only)
-node --check server.js && for f in src/*.js; do node --check "$f"; done
+npm run package       # writes index.html + starhermit-files.json (after every change)
+npm test              # node tests + native checks (tsc, starhermit check, play scripts)
+npm run test:online   # online tables on the runtime's local platform, refereed by server.js
+npm run test:browser  # the web package in Chrome on the GPU (desktop, phone, landscape)
 ```
 
-The test harness (`tests/harness.js`) drives the script with deterministic
-`ctx.now`/`ctx.random` adapters; production randomness comes only from the
-host-provided `ctx.random`.
+`STARHERMIT` names the runtime (default `~/sh/runtime/1.19.3/.../starhermit`). Run the game with
+`starhermit .` (signed out: the offline table), or `starhermit . --dev --local-platform --player NAME` to play
+online tables against a local platform that runs `server.js`.
 
 ## Deployment
 

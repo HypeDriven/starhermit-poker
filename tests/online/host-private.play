@@ -1,0 +1,25 @@
+# A signed-in player on the local platform: a private table with two AI
+# opponents, Start, the room-bound session refereed by server.js, shoving
+# every turn until the match's result and the leaderboard line.
+# viewport 1280x720
+until 900 =Quick Play
+frames 30
+save online-menu
+click =More AI opponents
+frames 30
+click =More AI opponents
+frames 30
+click =Private Table
+until 900 Start table
+frames 60
+save online-lobby
+click =Start table
+until 1800 Pot
+frames 60
+save online-table
+repeat 36000 until Winner:
+  key KeyA 2
+  frames 30
+end
+frames 400
+save online-over

@@ -1,0 +1,18 @@
+# Two players on the local platform, the guest's side (390 x 844): Quick Play
+# joins the host's open table; the table opens when the host starts it.
+# viewport 390x844@2
+until 900 =Quick Play
+frames 400
+touch =Quick Play
+until 900 Leave table
+frames 30
+save two-guest-lobby
+until 3600 Pot
+frames 120
+save two-table-guest
+repeat 36000 until Winner:
+  touch =All-in
+  frames 30
+end
+frames 200
+save two-over-guest

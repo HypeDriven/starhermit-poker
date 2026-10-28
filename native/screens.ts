@@ -87,12 +87,12 @@ function para(text: string, width: number, cls = "body", id?: string): void {
   else u.paragraph(text, width);
 }
 /** A note on its dark backing (.main-menu.cinematic p.muted): centred, wrapping inside its padding. */
-function note(text: string, width: number, cls: string, id: string): void {
+function note(text: string, width: number, cls: string, id: string, hidden = false): void {
   const inner = Math.min(width - 26, textWidth(text, cls) + 2);
   ui.column(id, () => {
     if (textWidth(text, cls) <= width - 26) ui.style({ text: { align: "center" } }).label(text);
     else ui.style({ text: { align: "center" } }).paragraph(text, inner);
-  }, { style: cls, align: "center" });
+  }, { style: hidden ? [cls, "invisible"] : cls, align: "center" });
 }
 function heading(cls: string, text: string, width: number): void {
   if (textWidth(text, cls, "heading") <= width) ui.style(cls).heading(text);
@@ -236,7 +236,8 @@ function menuScreen(full: number, L: Layout): void {
         }
       }, { style: "invite-inbox", width: iw, spacing: 4 });
     }
-    if (menu3d.flying()) note(T("Click anywhere to skip the intro"), w, "menu-note-small", "skip-hint");
+    // The hint keeps its room once the flight ends (hidden, not removed): the centred menu never moves under a press.
+    note(T("Click anywhere to skip the intro"), w, "menu-note-small", "skip-hint", !menu3d.flying());
     note(T("Choosing N AI opponents deals you in against exactly N of them. With 0 the table seats 6: invites and matchmaking fill it, and seats still empty at start become AI. In the lobby the host can tap an AI seat, then an empty seat, to move it."), w, "menu-note-small", "menu-ai-note");
   } else {
     note(T("Sign in with StarHermit to play online tables, with friends or against AI, on the leaderboard."), w, "menu-note-small", "menu-online-note");
@@ -608,7 +609,7 @@ function chatDialog(L: Layout): void {
   if (!app.online || !app.chat) return;
   const c = app.chat;
   const w = Math.min(520, L.lw - 40);
-  const open = ui.style("dialog").dialog(T("Table chat"), "", app.chatOpen, () => {
+  const open = ui.dialog(T("Table chat"), "", app.chatOpen, () => {
     ui.column("chat-body", () => {
       heading("h2", T("Table chat"), w);
       const listH = Math.min(260, Math.max(120, L.lh - 260));

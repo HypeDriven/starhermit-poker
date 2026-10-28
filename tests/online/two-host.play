@@ -1,0 +1,20 @@
+# Two players on the local platform, the host's side: Quick Play opens a
+# public table, waits for the second player, starts it; both shove to the result.
+# viewport 1280x720
+until 900 =Quick Play
+frames 60
+click =Quick Play
+until 900 Start table
+until 3600 2/6 seats
+frames 60
+save two-lobby
+click =Start table
+until 1800 Pot
+frames 120
+save two-table-host
+repeat 36000 until Winner:
+  key KeyA 2
+  frames 30
+end
+frames 200
+save two-over-host

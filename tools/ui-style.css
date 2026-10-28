@@ -227,3 +227,4 @@
 .replay-seat-acting { background: #16202f; border: 1px solid #ffd166; border-radius: 8px; padding: 6.4px; }
 .equity { color: #8fd0ff; font-size: 12px; font-weight: 700; }
 .dim { opacity: 0.45; }
+.invisible { opacity: 0; }

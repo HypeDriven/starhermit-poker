@@ -1555,6 +1555,9 @@
     },
     ".dim": {
       "opacity": 0.45
+    },
+    ".invisible": {
+      "opacity": 0
     }
   },
   "animations": {},

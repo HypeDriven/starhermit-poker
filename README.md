@@ -11,7 +11,7 @@ table's match and nothing else.
 
 ## Architecture
 
-- **Client** — a StarHermit engine script game (`native/*.ts` on the host API, engine 1.19.3, minor 20), played
+- **Client** — a StarHermit engine script game (`native/*.ts` on the host API, engine 1.22.0, minor 20), played
   natively in the StarHermit client and in browsers through the engine's web runtime (`index.html` is the loader
   `npm run package` writes). See `spec.md`.
 - **Server authority** — `server.js`, a single JavaScript file executed per
@@ -59,7 +59,7 @@ npm run test:online   # online tables on the runtime's local platform, refereed 
 npm run test:browser  # the web package in Chrome on the GPU (desktop, phone, landscape)
 ```
 
-`STARHERMIT` names the runtime (default `~/sh/runtime/1.19.3/.../starhermit`). Run the game with
+`STARHERMIT` names the runtime (default `~/sh/runtime/1.22.0/.../starhermit`). Run the game with
 `starhermit .` (signed out: the offline table), or `starhermit . --dev --local-platform --player NAME` to play
 online tables against a local platform that runs `server.js`.
 

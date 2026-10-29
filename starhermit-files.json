@@ -178,7 +178,7 @@
     "assets/ui-style.json": {"sha256": "063b85ba75992787f3a430e0f20000cfccd7b8b5dee246b599cdc4bc76cd3728", "size": 30063},
     "cover.jpg": {"sha256": "e4320524f37525a48c4f3d3219ec708f129fd70aa8466c82cf78b6a1184ad629", "size": 92719},
     "icon.png": {"sha256": "ace74adcaf1bc6cfcd7f90deb6b30c8e52c3fc653421b09f24c1592fea23b062", "size": 10940},
-    "index.html": {"sha256": "8d88b815a7a235070512e7ff7f37a46eeffb02b78d20ddf7bbd8cc895fc14ca9", "size": 1746},
+    "index.html": {"sha256": "ae1aa853de0e95ddff63cecfacf9457dbd4c38a569ac57e2ff50ee1c178dc04d", "size": 1746},
     "native/audio.ts": {"sha256": "9aea685d9b7c83b5e2f9112a81269521d0fdc01d173889c988b220e7bf24809b", "size": 5723},
     "native/classic.ts": {"sha256": "a69da2ef4773a5fd4130281cab054ee1abe6828d0e0b78ef7d3d7f08fb695ee5", "size": 2074},
     "native/equity-worker.js": {"sha256": "84697db694c7c6fb1d6a2c5ad46f685e4fe48ef5c5606f3b6c2ab9b86205f1da", "size": 445},
@@ -202,7 +202,7 @@
     "src/strings.js": {"sha256": "add56ff7874e5a64b895a9d327fc8588b442dea5c7dc285256317d4857c72019", "size": 53898},
     "src/table-model.js": {"sha256": "45055e99eb89034a9f270c2672c99993f8bff313304ad055138f432cabaa7929", "size": 7773},
     "src/table-utils.js": {"sha256": "e82da5b8931a38b3b70f97d2e27d2a525aa697c49ca02357d73c09be1dfa8af4", "size": 3122},
-    "starhermit.txt": {"sha256": "a0cba3528c5b7b23472be9630512592cb3bd1ac83b74d3a8a2877c650f58f6c2", "size": 2666}
+    "starhermit.txt": {"sha256": "75a2ab4856746747826f6b28ca1f146c7d7d70548181874657348bb721c8ed89", "size": 2666}
   },
   "excluded": ["LICENSE.md", "README.md", "coverart.png", "docs/", "leaderboards.json", "node_modules/", "package-lock.json", "package.json", "spec.md", "tests/", "tools/", "tsconfig.json"],
   "format": 1

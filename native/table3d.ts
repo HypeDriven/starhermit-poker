@@ -12,8 +12,8 @@
 // addressed projection; visibleCardsForSeat keeps an opponent's live cards
 // backs whatever arrives.
 //
-// From three.js r166 (physical lights): punctual and hemisphere intensities ÷ π
-// (the engine's legacy light units); environments, emissive and backgrounds as
+// From three.js r166 (physical lights): punctual and hemisphere intensities as
+// written (engine minor 23+ follows r155+ light units); environments, emissive and backgrounds as
 // written. The post chain (GTAO, UnrealBloom on linear HDR light, OutputPass
 // with ACES 1.05, the grade, SMAA / FXAA / MSAA) is the runtime's renderer.ao /
 // bloom / grade / antialias. The procedural canvases are baked images
@@ -64,20 +64,20 @@ function image(path: string, srgb = true): Texture {
 const backdrop = image("backdrop.webp");
 
 // -- lights -------------------------------------------------------------------------------------
-const hemi = new HemisphereLight(0xb9d9ff, 0x160c08, 1.35 / PI);
-const KEY = 42 / PI;
+const hemi = new HemisphereLight(0xb9d9ff, 0x160c08, 1.35);
+const KEY = 42;
 const key = new SpotLight(0xfff0d3, KEY, 25, PI / 4.2, 0.7, 1.2);
 key.position.set(-3.5, 8, 4.5);
 key.target.position.set(0, 0, 0);
 // The shadow fitted to the table: the light sits ~10 units from the felt.
-key.shadow.near = 5;
-key.shadow.distance = 16;
+key.shadow.camera.near = 5;
+key.shadow.camera.far = 16;
 key.shadow.bias = -0.0004;
-key.shadow.normalBias = 1;
+key.shadow.normalBias = 0.015;
 key.shadow.focus = 0.9;
-const rim = new PointLight(0x3d7dff, 22 / PI, 14, 2);
+const rim = new PointLight(0x3d7dff, 22, 14, 2);
 rim.position.set(4.5, 2.5, -4);
-const warm = new PointLight(0xff9e53, 12 / PI, 10, 2);
+const warm = new PointLight(0xff9e53, 12, 10, 2);
 warm.position.set(-5, 1.5, 1);
 root.add(hemi, key, key.target, rim, warm);
 

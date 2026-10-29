@@ -10,7 +10,7 @@
 // (with a little pointer parallax on mouse devices). Any press or key skips the
 // flight. The GLSL ShaderMaterials are WGSL here (three's vUv.y is 1 − uv.y);
 // the point-sprite dust is camera-facing instanced quads sized in pixels as
-// gl_PointSize sized them. Lights ÷ π (r166 physical units). The old
+// gl_PointSize sized them. Lights as written (r166 physical units). The old
 // NaN-scrubbing pass before the bloom guarded drivers' GLSL; the WGSL here
 // squares by hand and guards its divides instead.
 import {
@@ -35,15 +35,15 @@ camera.position.set(0, 5.5, 30);
 
 // -- lighting -----------------------------------------------------------------------------------
 {
-  root.add(new AmbientLight(0x334466, 2.2 / PI));
-  root.add(new HemisphereLight(0x445588, 0x1a0f22, 1.2 / PI));
-  const key = new PointLight(0x66ccff, 900 / PI, 60, 2);
+  root.add(new AmbientLight(0x334466, 2.2));
+  root.add(new HemisphereLight(0x445588, 0x1a0f22, 1.2));
+  const key = new PointLight(0x66ccff, 900, 60, 2);
   key.position.set(0, 11, 0);
-  const warm = new PointLight(0xff8844, 500 / PI, 45, 2);
+  const warm = new PointLight(0xff8844, 500, 45, 2);
   warm.position.set(14, 8, -10);
-  const cool = new PointLight(0x8844ff, 500 / PI, 45, 2);
+  const cool = new PointLight(0x8844ff, 500, 45, 2);
   cool.position.set(-14, 8, 10);
-  const felt = new PointLight(0x33ffaa, 110 / PI, 18, 2);
+  const felt = new PointLight(0x33ffaa, 110, 18, 2);
   felt.position.set(0, 5, 0);
   root.add(key, warm, cool, felt);
 }

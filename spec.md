@@ -39,7 +39,7 @@ client and in browsers through the engine's web runtime (the loader `index.html`
   skip hint (hidden, keeping its room, once the flight ends) and the note on AI seats. A room the player still
   holds a seat in reopens its lobby or table at start; a launch for an invite's session opens that table.
 - **Lobby** (realtime room): Private/Public table, the room status and seats, the seat grid (host, AI, ready,
-  offline badges; the host taps an AI seat, then an empty seat, to move it), **Ready**, the host's **Start table**
+  offline badges; the host taps an AI seat, then an empty seat, to move it), **Ready** / **Unready**, the host's **Start table**
   and **Open to matchmaking**, **Leave table**, and while the room is in the lobby or open: **Copy share link** and
   the friend list with **Invite** (room invites; StarHermit notifies the friend).
 - **Table**: a status bar (Leave table · hand and street · Settings), the stage (the 3D table framed between the
@@ -81,7 +81,7 @@ press the UI's focus, East goes back. Every button takes the pointer, touch, or 
 
 ## Look
 
-The old three.js r166 scenes, ported: lights ÷ π (r155+ physical units), ACES 1.05 (table) / 1.0 (menu), the
+The old three.js r166 scenes, ported: lights as written (r155+ physical units, engine minor 23+), ACES 1.05 (table) / 1.0 (menu), the
 runtime's GTAO, bloom (table threshold 1.5, menu 0.85, before tone mapping as the old composer bloomed linear
 HDR), display-space grade (contrast 0.11, saturation 1.1, split tint, vignette 0.28) and antialiasing per tier;
 RoomEnvironment reflections at environment intensity 0.42. Per tier (runtime quality → old preset): Low (Lambert,
@@ -92,8 +92,8 @@ within a tier (≤ 2×). The runtime owns render scale, adaptive resolution and 
 
 Card faces, felt, bumps, chips, the STARHERMIT print and the menu's holographic cards are baked once in Chrome
 from the old canvas painters (`npm run textures`); one image per card, loaded when the card first shows. The
-casino's Blender lights (KHR_lights_punctual, which the engine's loader refuses as a required extension) were
-stripped from the file (`tools/strip-glb-lights.mjs`); the old code dropped them at load anyway.
+casino.glb ships as the browser build had it; its Blender lights (KHR_lights_punctual, created by the engine's
+loader since minor 22) are dropped at load as the old code did.
 
 ## Sound
 
@@ -125,8 +125,6 @@ with a notice; offline play keeps working.
 
 ## Known limitations
 
-- **Ready can't be withdrawn**: the runtime's room socket sends only a ready signal (`sendReady()`), so the
-  lobby's old Ready/Unready toggle is a one-way Ready.
 - **Achievements are not unlocked** (scripted games have no script-side unlock hook; `src/achievements.js` keeps
   the catalog).
 - The table's DOM-era rounded stage corners are square (the page around the 3D view is painted in bands).

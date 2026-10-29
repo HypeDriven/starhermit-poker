@@ -113,7 +113,7 @@ export const adapter = {
   myRoom: (): Promise<Room | null> => rooms.mine(),
   seat: (id: string, seats: { participantId: string; team: number; slot: number }[]): Promise<Room> => rooms.seat(id, seats),
   invite: (id: string, user: string): Promise<void> => rooms.invite(id, user),
-  connectRoom(roomId: string, h: RoomHandlers): { sendReady(): boolean; close(): void } {
+  connectRoom(roomId: string, h: RoomHandlers): { sendReady(ready?: boolean): boolean; close(): void } {
     let socket: RoomSocket | null = null;
     try { socket = rooms.connect(roomId); } catch { queueMicrotask(() => h.onStopped?.("connect")); }
     if (socket) {
@@ -129,7 +129,7 @@ export const adapter = {
       socket.on("stopped", (reason) => h.onStopped?.(reason));
     }
     return {
-      sendReady(): boolean { try { return !!socket && socket.sendReady(); } catch { return false; } },
+      sendReady(ready = true): boolean { try { return !!socket && socket.sendReady(ready); } catch { return false; } },
       close(): void { try { socket?.close(); } catch { /* gone */ } socket = null; },
     };
   },

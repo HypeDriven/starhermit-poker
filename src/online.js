@@ -220,11 +220,13 @@ export class LobbyClient {
     return this.presence.get(participant.userId) !== false;
   }
 
-  sendReady() {
-    if (this.selfReady || !this._socket) return false;
-    this.selfReady = this._socket.sendReady();
+  /** Ready (the default) or, with false, Unready again; true when the signal went out. */
+  sendReady(ready = true) {
+    if (this.selfReady === ready || !this._socket) return false;
+    const sent = this._socket.sendReady(ready);
+    if (sent) this.selfReady = ready;
     this._emit('onChange');
-    return this.selfReady;
+    return sent;
   }
 
   get canStart() { return canStart(this.room, this.userId) && !this.unavailable && !this.starting; }

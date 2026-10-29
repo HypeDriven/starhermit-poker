@@ -313,7 +313,7 @@ function lobbyScreen(w: number, L: Layout): void {
   // Ready, the host's Start and Open, Leave.
   const host = l.host;
   const acts: Btn[] = [
-    { id: "btn-ready", text: l.selfReady ? T("badge.ready") + " ✓" : T("Ready"), act: () => l.sendReady(), disabled: l.selfReady },
+    { id: "btn-ready", text: l.selfReady ? T("Unready") : T("Ready"), act: () => l.sendReady(!l.selfReady) },
     ...(host ? [{ id: "btn-start", text: T("Start table"), style: "btn-primary", act: lobbyStart, disabled: !l.canStart }] : []),
     ...(host && room.status === "lobby" ? [{ id: "btn-open", text: T("Open to matchmaking"), act: lobbyOpen }] : []),
     { id: "btn-lobby-leave", text: T("Leave table"), act: lobbyLeave },

@@ -74,7 +74,7 @@ class FakePlatform {
   connectRoom(id, h) {
     const s = { id, h, ready: 0 };
     this.roomSockets.push(s);
-    return { sendReady: () => { s.ready++; return true; }, close: () => { s.closed = true; } };
+    return { sendReady: (ready = true) => { s.ready += ready ? 1 : -1; return true; }, close: () => { s.closed = true; } };
   }
   connectGame(sessionId, h) {
     const sock = { sessionId, h, sent: [] };
@@ -135,6 +135,9 @@ test('the lobby: ready, AI seat moves, start hands over to the server-refereed t
   assert.equal(lobby.host, true);
   assert.equal(lobby.sendReady(), true);
   assert.equal(lobby.isReady(lobby.participants[0]), true);
+  assert.equal(lobby.sendReady(false), true); // Unready
+  assert.equal(lobby.isReady(lobby.participants[0]), false);
+  assert.equal(lobby.sendReady(true), true);
   // The AI seat moves to an empty seat (the table of 1 + 1 has none: a 6-seat table does).
   const big = await createPrivateTable(p, 0);
   const lobby2 = new LobbyClient(p, { ...big, participants: [...big.participants, { id: 'p-bot', userId: null, isAi: true, team: 0, slot: 1 }] }, {});

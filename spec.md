@@ -1,7 +1,7 @@
 # StarHermit Poker — running spec
 
 Multiplayer no-limit Texas Hold'em (2–6 seats, play-money chips) as a StarHermit engine script game, pinned to
-engine 1.23.0 with `engine.minor=20` (strict three.js r185 parity). One package plays natively in the StarHermit
+engine 1.24.0 with `engine.minor=20` (strict three.js r185 parity). One package plays natively in the StarHermit
 client and in browsers through the engine's web runtime (the loader `index.html` that `npm run package` writes).
 `server.js` is the authoritative rules referee; this client only shows projections and sends commands.
 

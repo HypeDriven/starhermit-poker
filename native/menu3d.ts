@@ -326,8 +326,8 @@ function applyRenderer(): void {
   renderer.toneMappingExposure = 1.0;
   renderer.ao = null;
   renderer.shadowMap.enabled = false;
-  // three r166 page: UnrealBloomPass 0.45 squared (0.2025) for the engine's r185 bloom (engine.minor 29).
-  renderer.bloom = l.bloom ? { strength: 0.2025, radius: 0.4, threshold: 0.85, resolution: l.budget.bloomRes } : null;
+  // three r166 page: the engine's r160 bloom model at the page's strength (engine.minor 30).
+  renderer.bloom = l.bloom ? { model: "r160", strength: 0.45, radius: 0.4, threshold: 0.85, resolution: l.budget.bloomRes } : null;
   renderer.grade = l.grade ? GRADE : null;
   renderer.antialias = l.antialias;
 }

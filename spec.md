@@ -1,7 +1,7 @@
 # StarHermit Poker — running spec
 
 Multiplayer no-limit Texas Hold'em (2–6 seats, play-money chips) as a StarHermit engine script game, pinned to
-engine 1.27.0 with `engine.minor=29` (strict three.js r185 parity). One package plays natively in the StarHermit
+engine 1.28.0 with `engine.minor=30` (strict three.js r185 parity). One package plays natively in the StarHermit
 client and in browsers through the engine's web runtime (the loader `index.html` that `npm run package` writes).
 `server.js` is the authoritative rules referee; this client only shows projections and sends commands.
 
@@ -82,8 +82,8 @@ press the UI's focus, East goes back. Every button takes the pointer, touch, or 
 ## Look
 
 The old three.js r166 scenes, ported: lights as written (r155+ physical units, engine minor 23+), ACES 1.05 (table) / 1.0 (menu), the
-runtime's GTAO, bloom (table threshold 1.5, menu 0.85, before tone mapping as the old composer bloomed linear
-HDR), display-space grade (contrast 0.11, saturation 1.1, split tint, vignette 0.28) and antialiasing per tier;
+runtime's GTAO, bloom (model r160; table 0.6 threshold 1.5, menu 0.45 threshold 0.85, before tone mapping as the old composer bloomed linear
+HDR), display-space grade (smoothstep S-curve 0.22, saturation 1.1, split tint, levels 0.975 + 0.012, vignette 0.28) and antialiasing per tier;
 RoomEnvironment reflections at environment intensity 0.42. Per tier (runtime quality → old preset): Low (Lambert,
 128 px cards, no shadows/bloom/grade, plain table, static background), Balanced (Standard, 256 px cards, 1024
 shadow map, bloom, grade, FXAA, detailed table), High (Physical, 2048 shadows, GTAO, SMAA, particles high),

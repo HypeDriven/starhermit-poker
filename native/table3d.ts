@@ -327,17 +327,17 @@ function applyRenderer(): void {
     denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: l.ao === "high" ? 6 : 4, rings: 2, samples: l.ao === "high" ? 16 : 8, radiusExponent: 2 },
   };
   // UnrealBloomPass(0.6, 0.5, 1.5) on the linear HDR light before OutputPass, as the runtime blooms.
-  // three r166 page: UnrealBloomPass 0.6 squared (0.36) for the engine's r185 bloom (engine.minor 29).
-  renderer.bloom = l.bloom ? { strength: 0.36, radius: 0.5, threshold: 1.5, resolution: l.budget.bloomRes } : null;
+  // three r166 page: the engine's r160 bloom model at the page's strength (engine.minor 30).
+  renderer.bloom = l.bloom ? { model: "r160", strength: 0.6, radius: 0.5, threshold: 1.5, resolution: l.budget.bloomRes } : null;
   renderer.grade = l.grade ? GRADE : null;
   renderer.antialias = l.antialias;
   renderer.shadowMap.enabled = l.shadows > 0;
   key.castShadow = l.shadows > 0;
   if (l.shadows > 0) key.shadow.mapSize = l.shadows;
 }
-/** gfx-pipeline.js GradeShader (after OutputPass, display colours): 0.22 S-curve, saturation 1.1, cool shadows / warm highlights, vignette 0.28. */
+/** gfx-pipeline.js GradeShader (after OutputPass, display colours): 0.22 smoothstep S-curve, saturation 1.1, cool shadows / warm highlights, the s * 0.975 + 0.012 lift, vignette 0.28. */
 export const GRADE = {
-  space: "display" as const, contrast: 0.11, saturation: 1.1, split: [0.15, 0.85] as [number, number],
+  space: "display" as const, contrastCurve: "s" as const, contrast: 0.22, levels: [0.975, 0.012] as [number, number], saturation: 1.1, split: [0.15, 0.85] as [number, number],
   shadows: [0.95, 0.98, 1.06] as [number, number, number], highlights: [1.05, 1.0, 0.94] as [number, number, number],
   vignette: { amount: 0.28, inner: 0.38, outer: 0.9, scale: [1.1, 1] as [number, number] },
 };

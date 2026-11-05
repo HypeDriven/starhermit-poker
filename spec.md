@@ -87,8 +87,9 @@ HDR), display-space grade (smoothstep S-curve 0.22, saturation 1.1, split tint, 
 RoomEnvironment reflections at environment intensity 0.42. Per tier (runtime quality → old preset): Low (Lambert,
 128 px cards, no shadows/bloom/grade, plain table, static background), Balanced (Standard, 256 px cards, 1024
 shadow map, bloom, grade, FXAA, detailed table), High (Physical, 2048 shadows, GTAO, SMAA, particles high),
-Ultra (512 px cards, 2048 felt, 4096 shadows, GTAO high, MSAA). Star, mote and dust counts grow with the level
-within a tier (≤ 2×). The runtime owns render scale, adaptive resolution and the frame-rate limit.
+Ultra (512 px cards, 2048 felt, 4096 shadows, GTAO high, MSAA). Shadows, GTAO, bloom, grade and AA come from the
+engine's `levelSettings()` for the frame's level (Low has no AA, Ultra has MSAA 4; shown at each tier's first level). Star, mote and dust counts grow with the
+level's particle budget within a tier (≤ 2×). The runtime owns render scale, adaptive resolution and the frame-rate limit.
 
 Card faces, felt, bumps, chips, the STARHERMIT print and the menu's holographic cards are baked once in Chrome
 from the old canvas painters (`npm run textures`); one image per card, loaded when the card first shows. The

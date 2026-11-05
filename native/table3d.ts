@@ -321,19 +321,20 @@ function applyRenderer(): void {
   const l = look!;
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
-  renderer.ao = l.ao === "off" ? null : {
-    blendIntensity: 0.75, radius: 0.35, distanceExponent: 1.4, thickness: 1, scale: 1, samples: l.ao === "high" ? 16 : 8,
-    resolution: l.budget.aoRes,
-    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: l.ao === "high" ? 6 : 4, rings: 2, samples: l.ao === "high" ? 16 : 8, radiusExponent: 2 },
+  const ao = l.ao, aoFull = !!ao && ao.resolution >= 1;
+  renderer.ao = ao && {
+    blendIntensity: 0.75, radius: 0.35, distanceExponent: 1.4, thickness: 1, scale: 1, samples: ao.samples,
+    resolution: ao.resolution,
+    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: aoFull ? 6 : 4, rings: 2, samples: ao.denoiseSamples, radiusExponent: 2 },
   };
   // UnrealBloomPass(0.6, 0.5, 1.5) on the linear HDR light before OutputPass, as the runtime blooms.
   // three r166 page: the engine's r160 bloom model at the page's strength (engine.minor 30).
-  renderer.bloom = l.bloom ? { model: "r160", strength: 0.6, radius: 0.5, threshold: 1.5, resolution: l.budget.bloomRes } : null;
+  renderer.bloom = l.bloom === null ? null : { model: "r160", strength: 0.6, radius: 0.5, threshold: 1.5, resolution: l.bloom };
   renderer.grade = l.grade ? GRADE : null;
   renderer.antialias = l.antialias;
   renderer.shadowMap.enabled = l.shadows > 0;
   key.castShadow = l.shadows > 0;
-  if (l.shadows > 0) key.shadow.mapSize = l.shadows;
+  if (l.shadows > 0) key.shadow.mapSize = l.shadows; // the level's size: at minor ≥ 23 the engine keeps whatever the game sets
 }
 /** gfx-pipeline.js GradeShader (after OutputPass, display colours): 0.22 smoothstep S-curve, saturation 1.1, cool shadows / warm highlights, the s * 0.975 + 0.012 lift, vignette 0.28. */
 export const GRADE = {
@@ -368,7 +369,7 @@ export function applyLook(next: Look): void {
   motes.count = counts.motes;
   starGeo.setDrawRange(0, counts.stars);
   // An HDR colour so only the acting-seat ring blooms (clamped when bloom is off).
-  ringMat.color.set(0xffd66d).multiplyScalar(next.bloom ? 4 : 1);
+  ringMat.color.set(0xffd66d).multiplyScalar(next.bloom !== null ? 4 : 1);
   if (active) { applyRenderer(); applyEnv(); }
   if (last) update(last.pub, last.you, true);
 }

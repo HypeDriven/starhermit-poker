@@ -1,0 +1,49 @@
+# Tier bench: an offline match at the table, with real betting rounds.
+# viewport 1280x800@1
+until 600 =Play
+frames 30
+click =Play
+until 600 Pot
+frames 120
+measure start
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+key KeyA 2
+frames 30
+measure stop

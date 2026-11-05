@@ -20,7 +20,7 @@
 // the match starts on. Online tables read the platform's clock (server.js's
 // deadlines are platform time).
 import "./classic.ts";
-import { clipboard, frame, onFixedUpdate, onPreferencesChange, onRender, onStart, onUpdate, preferences, setFixedRate } from "starhermit:engine";
+import { clipboard, frame, levelSettings, onFixedUpdate, onPreferencesChange, onRender, onStart, onUpdate, preferences, setFixedRate } from "starhermit:engine";
 import { onAction, onKey, onPointerButton, onPointerMove, onTouch, primaryPointer } from "starhermit:input";
 import * as ui from "starhermit:ui";
 import { renderer } from "starhermit:scene";
@@ -526,10 +526,9 @@ onPointerMove((x, y) => {
 let lookKey = "";
 function applyLook(): void {
   const f = frame();
-  const k = `${f.quality}:${f.levelIndex}`;
-  if (k === lookKey) return;
-  lookKey = k;
-  const look = lookFor(f.quality, f.levelIndex);
+  if (f.level === lookKey) return;
+  lookKey = f.level;
+  const look = lookFor(levelSettings(f.level));
   table3d.applyLook(look);
   menu3d.applyLook(look);
 }

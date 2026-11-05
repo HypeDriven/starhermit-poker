@@ -62,21 +62,10 @@ function button(b: Btn, width: number | null = null): ui.Rect | null {
   return null;
 }
 /** Buttons at their own widths in rows that wrap at `width`. */
-function flow(label: string, list: Btn[], width: number, gap = 10, justify: "start" | "center" | "end" = "start"): ui.Rect {
-  const rows: Btn[][] = [[]];
-  let used = 0;
-  const bw = (b: Btn): number => Math.min(width, buttonWidth(b.text, b.style ?? "btn"));
-  for (const b of list) {
-    const w = bw(b);
-    if (rows[rows.length - 1]!.length && used + gap + w > width) { rows.push([]); used = 0; }
-    used += (rows[rows.length - 1]!.length ? gap : 0) + w;
-    rows[rows.length - 1]!.push(b);
-  }
-  return ui.column(label, () => {
-    rows.forEach((row, ri) => ui.row(`${label}-r${ri}`, () => {
-      for (const b of row) button(b, bw(b) >= width ? width : null);
-    }, { spacing: gap, width, justify }));
-  }, { spacing: gap, width });
+function flow(label: string, list: Btn[], width: number, gap = 10, justify: "start" | "center" | "end" = "start"): void {
+  ui.row(label, () => {
+    for (const b of list) button(b, buttonWidth(b.text, b.style ?? "btn") >= width ? width : null);
+  }, { wrap: true, width, gap, justify });
 }
 /** Text up to `width` wide: one label when it fits, else a paragraph. */
 function para(text: string, width: number, cls = "body", id?: string): void {

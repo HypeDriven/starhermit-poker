@@ -327,7 +327,7 @@ function applyRenderer(): void {
   renderer.ao = null;
   renderer.shadowMap.enabled = false;
   // three r166 page: the engine's r160 bloom model at the page's strength (engine.minor 30).
-  renderer.bloom = l.bloom ? { model: "r160", strength: 0.45, radius: 0.4, threshold: 0.85, resolution: l.budget.bloomRes } : null;
+  renderer.bloom = l.bloom === null ? null : { model: "r160", strength: 0.45, radius: 0.4, threshold: 0.85, resolution: l.bloom };
   renderer.grade = l.grade ? GRADE : null;
   renderer.antialias = l.antialias;
 }

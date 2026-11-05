@@ -88,7 +88,7 @@ let failed = false;
 export function play(cue: Cue): void {
   const clip = clips.get(cue);
   if (!clip) return;
-  try { playClip(clip, { bus: "effects" }); } catch { clips.delete(cue); }
+  try { playClip(clip, { bus: "effects" }); } catch { /* the mixer is full this frame: skip it */ }
 }
 
 /** Each frame: renders the next missing clip once the mixer runs (one a frame). */

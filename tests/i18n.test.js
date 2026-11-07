@@ -6,10 +6,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { STRINGS, EN } from '../src/strings.js';
-import { t, setLocale, handDescription, serverMessage } from '../src/i18n.js';
+import { t, handDescription, serverMessage } from '../src/i18n.js';
+import { setLocale, STRINGS } from './bind-strings.js';
 import { describeLogEntry } from '../src/table-utils.js';
 
+const EN = STRINGS['en-US'];
 const LOCALES = ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT'];
 const read = (f) => readFileSync(new URL('../' + f, import.meta.url), 'utf8');
 const lit = /(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/.source;
@@ -32,7 +33,7 @@ export const SERVER_MESSAGES = [
 export function usedKeys() {
   const keys = new Set();
   const srcFiles = readdirSync(new URL('../src/', import.meta.url)).filter((f) => f.endsWith('.js'))
-    .filter((f) => !['strings.js', 'platform-i18n.js'].includes(f)).map((f) => 'src/' + f);
+    .map((f) => 'src/' + f);
   const nativeFiles = readdirSync(new URL('../native/', import.meta.url)).filter((f) => f.endsWith('.ts')).map((f) => 'native/' + f);
   for (const f of [...srcFiles, ...nativeFiles]) {
     const src = read(f);
@@ -49,9 +50,9 @@ export function usedKeys() {
   }
   for (const k of ['Unready', 'Ready', 'Friends: on', 'Friends: off']) keys.add(k);
   for (const k of SERVER_MESSAGES) keys.add(k);
-  for (const k of Object.keys(EN)) keys.add(k);
+  for (const k of Object.keys(EN)) if (EN[k] !== k) keys.add(k);
   // dynamic prefixes are covered by EN (street.*, room.*, …); drop the bare prefixes and template keys
-  for (const k of [...keys]) if (k === '' || /^[\w-]+\.$/.test(k) || k.includes('${')) keys.delete(k);
+  for (const k of [...keys]) if (k === '' || /^[\w-]+\.$/.test(k) || k.includes('${') || k.startsWith('starhermit.')) keys.delete(k);
   return keys;
 }
 

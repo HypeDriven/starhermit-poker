@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { loadScript } from './harness.js';
 import { OfflineTable, USER_ID, TICK_MS } from '../src/offline.js';
 import { FEED_CAP, REVEAL_WINDOW_MS } from '../src/table-model.js';
-import { setLocale } from '../src/i18n.js';
+import { setLocale } from './bind-strings.js';
 
 function seeded(seed) {
   let a = seed >>> 0;

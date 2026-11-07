@@ -1,26 +1,16 @@
 // StarHermit Poker — the game language: string lookup, number grouping and the
 // rules engine's English (hand descriptions, rejections) in the player's
-// language. Pure (no DOM, no host): the engine client (native/i18n.ts) sets the
-// locale from the runtime's interface language, and the node tests drive it
-// directly. Strings are keyed by their en-US text (strings.js); EN holds the
-// symbolic keys.
+// language. Pure (no DOM, no host): the tables are assets/strings.json (keyed by
+// en-US text or a symbolic key); the engine client (native/i18n.ts) binds the
+// engine's `strings` to them, the node tests a table of their own
+// (tests/bind-strings.js).
 
-import { STRINGS, EN } from './strings.js';
-
-export const LOCALES = ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT'];
-
-let locale = 'en-US';
-let table = STRINGS['en-US'];
-const listeners = new Set();
+let impl = { t: (key) => key, locale: () => 'en-US' };
+/** Sets the lookup behind t() and num(): { t(key, vars), locale() }. */
+export function bindStrings(next) { impl = next; }
 
 /** Translate an en-US string (or symbolic key); {name} placeholders filled from vars. */
-export function t(key, vars) {
-  let s = table[key] ?? STRINGS['en-US'][key] ?? EN[key] ?? key;
-  if (vars) s = String(s).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
-  return s;
-}
-
-export function getLocale() { return locale; }
+export function t(key, vars) { return impl.t(key, vars); }
 
 // Digit grouping per locale, as the browsers' toLocaleString wrote it (es-ES and
 // it-IT leave four-digit numbers ungrouped; fr-FR groups with a narrow no-break
@@ -34,7 +24,7 @@ export function num(n) {
   const v = Math.round(Number(n) || 0);
   const neg = v < 0;
   const digits = String(Math.abs(v));
-  const [sep, minGroups] = GROUP[locale] || GROUP['en-US'];
+  const [sep, minGroups] = GROUP[impl.locale()] || GROUP['en-US'];
   if (digits.length <= 3 || (minGroups === 2 && digits.length < 5)) return (neg ? '-' : '') + digits;
   let out = '';
   for (let i = 0; i < digits.length; i++) {
@@ -42,18 +32,6 @@ export function num(n) {
     out += digits[i];
   }
   return (neg ? '-' : '') + out;
-}
-
-/** fn(locale) after every language change; returns an unsubscribe function. */
-export function onLocaleChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
-
-export function setLocale(next) {
-  const resolved = LOCALES.includes(next) ? next : 'en-US';
-  const changed = resolved !== locale;
-  locale = resolved;
-  table = STRINGS[locale] || STRINGS['en-US'];
-  if (changed) for (const fn of [...listeners]) { try { fn(locale); } catch (e) { console.error(e); } }
-  return locale;
 }
 
 /** Betting street (preflop / flop / turn / river / showdown) for status lines. */

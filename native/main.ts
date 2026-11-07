@@ -32,7 +32,7 @@ import { ReplayEngine } from "../src/replay-engine.js";
 import { presetTotal } from "../src/table-utils.js";
 import type { TableModel } from "../src/table-model.js";
 import * as audio from "./audio.ts";
-import { S, T } from "./i18n.ts";
+import { T } from "./i18n.ts";
 import * as platform from "./platform.ts";
 import { lookFor } from "./quality.ts";
 import * as table3d from "./table3d.ts";
@@ -160,8 +160,8 @@ export function signIn(): void { void requestSignIn().catch(() => undefined); }
 export function copyInvite(): void {
   const link = platform.inviteLink();
   if (!link) return;
-  try { clipboard.writeText(link); app.status = () => S("inviteCopied"); }
-  catch { app.status = () => S("inviteFailed", { link }); }
+  try { clipboard.writeText(link); app.status = () => T("starhermit.inviteCopied"); }
+  catch { app.status = () => T("starhermit.inviteLink", { link }); }
 }
 
 /** Quick Play or a private table (with the chosen number of AI opponents). */
@@ -315,14 +315,14 @@ function showMatchRank(result: { winnerUserId?: string | null } | null): void {
   if (!me || !result) return;
   const t = app.online;
   const key = result.winnerUserId === me ? "match-wins" : "hands-won";
-  app.lbLine = () => S("lbPosting");
+  app.lbLine = () => T("starhermit.leaderboardPosting");
   let tries = 0;
   const poll = (): void => {
     void platform.rankOn(key).then((rank) => {
       if (app.online !== t) return;
-      if (rank) { app.lbLine = () => S("lbRank", { rank }); return; }
+      if (rank) { app.lbLine = () => T("starhermit.leaderboardRank", { rank }); return; }
       if (++tries < 8) setTimeout(poll, 1500);
-      else app.lbLine = () => S("lbPosted");
+      else app.lbLine = () => T("acct.lbPosted");
     });
   };
   poll();
@@ -534,6 +534,7 @@ function applyLook(): void {
 }
 
 onStart(() => {
+  audio.load();
   setFixedRate(60);
   initStyles();
   platform.initPlatform();
@@ -563,7 +564,7 @@ platform.onPlayer(() => {
 });
 onPreferencesChange((p) => { table3d.setReducedMotion(p.reducedMotion); menu3d.setReducedMotion(p.reducedMotion); });
 onSessionEnded((reason) => {
-  app.notice = reason === "expired" ? () => S("expired") : reason === "terms-required" ? () => S("termsRequired") : () => S("signedOut");
+  app.notice = reason === "expired" ? () => T("acct.expired") : reason === "terms-required" ? () => T("acct.termsRequired") : () => T("starhermit.signedOut");
   if (app.screen !== "table" || app.online) goMenu(app.notice);
 });
 
@@ -578,7 +579,6 @@ let lastVersion = -1;
 onUpdate((dt) => {
   frameDt = dt;
   applyLook();
-  audio.update();
   if (app.online) app.online.update();
   pollInvites();
   const m = tableModel();

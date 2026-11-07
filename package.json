@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "npm run test:unit && npm run test:native",
-    "test:unit": "node --test tests/*.test.js",
+    "test:unit": "node --import ./tests/bind-strings.js --test tests/*.test.js",
     "test:native": "node tests/native.mjs",
     "test:browser": "node tools/browser-play.mjs .",
     "test:online": "node tools/online-play.mjs",

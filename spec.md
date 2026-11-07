@@ -23,7 +23,7 @@ client and in browsers through the engine's web runtime (the loader `index.html`
 | `src/offline.js` | The offline table: `server.js` driven locally on an injected clock and random source |
 | `src/online.js` | Rooms lobby (`LobbyClient`), the server-refereed table client (`TableClient`), Quick Play / private tables / invites |
 | `src/table-model.js` | The table as the client sees it: last projection, feed, reveal window, sound cues |
-| `src/i18n.js`, `src/strings.js`, `src/platform-i18n.js` | Strings in nine locales (en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT) |
+| `assets/strings.json`, `src/i18n.js`, `native/i18n.ts` | Strings in nine locales (en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT) |
 | `src/table-utils.js`, `src/replay-engine.js`, `src/menu3d-physics.js`, `src/achievements.js` | Pure helpers shared with the node tests |
 | `assets/textures/` | Baked canvas textures (`tools/bake-textures.mjs`) |
 | `assets/ui-style.json` | `tools/ui-style.css` converted by `starhermit css` (`npm run css`) |
@@ -98,8 +98,8 @@ loader since minor 22) are dropped at load as the old code did.
 
 ## Sound
 
-`sfx=synthesized`: the deal swish, card snap, chip clicks, win chime and turn blip are rendered sample by sample
-from the old oscillator / band-passed-noise recipes into clips once the mixer runs, and play on the effects bus.
+`sfx=synthesized`: the deal swish, card snap, chip clicks, win chime and turn blip are rendered at start
+on an OfflineAudioContext from the old oscillator / band-passed-noise recipes into clips, and play on the effects bus.
 Volumes, mute and the voice limit are the runtime's Options (they replaced the table's Sound button).
 
 ## Platform and settings

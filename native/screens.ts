@@ -19,7 +19,7 @@ import { seatUnit, seatVisual, seatName } from "../src/table-utils.js";
 import { actionLabels, seatBadges, tableStatus } from "../src/table-model.js";
 import { REPLAY_SPEEDS } from "../src/replay-engine.js";
 import { serverMessage } from "../src/i18n.js";
-import { N, Num, S, T } from "./i18n.ts";
+import { N, Num, T } from "./i18n.ts";
 import * as platform from "./platform.ts";
 import * as menu3d from "./menu3d.ts";
 import {
@@ -32,10 +32,9 @@ import {
 // ------------------------------------------------------------------ layout
 interface Layout { lw: number; lh: number; sc: number; sx: number; sy: number }
 function layoutNow(): Layout {
-  const f = frame();
-  const sc = ui.preferences().scale;
-  const sa = f.safeArea;
-  return { lw: Math.max(1, (f.width - sa.left - sa.right) / sc), lh: Math.max(1, (f.height - sa.top - sa.bottom) / sc), sc, sx: sa.left, sy: sa.top };
+  const v = ui.viewport!();
+  // sx, sy in window pixels: the stage rectangle table3d offsets its camera by.
+  return { lw: Math.max(1, v.width), lh: Math.max(1, v.height), sc: v.scale, sx: v.x * v.scale, sy: v.y * v.scale };
 }
 const lastSize = new Map<string, { w: number; h: number }>();
 function remember(key: string, r: ui.Rect, sc: number): void { lastSize.set(key, { w: r.width / sc, h: r.height / sc }); }
@@ -193,11 +192,11 @@ function menuScreen(full: number, L: Layout): void {
     { id: "btn-board", text: T("Leaderboard"), style: "btn-cine", act: showLeaderboard },
     { id: "btn-replays", text: T("Replays"), style: "btn-cine", act: showReplays },
     { id: "btn-help", text: T("How to play"), style: "btn-cine", act: toggleHelp, selected: app.helpOpen },
-    ...(platform.inviteLink() ? [{ id: "btn-invite", text: S("invite"), style: "btn-cine", act: copyInvite }] : []),
+    ...(platform.inviteLink() ? [{ id: "btn-invite", text: T("starhermit.invite"), style: "btn-cine", act: copyInvite }] : []),
     { id: "btn-settings", text: T("Settings"), style: "btn-cine", act: () => openMenu() },
   ] : [
     { id: "btn-play", text: T("Play"), style: "btn-cine-primary big", act: startOffline },
-    { id: "btn-signin", text: S("signIn"), style: "btn-cine", act: signIn },
+    { id: "btn-signin", text: T("starhermit.signIn"), style: "btn-cine", act: signIn },
     { id: "btn-help", text: T("How to play"), style: "btn-cine", act: toggleHelp, selected: app.helpOpen },
     { id: "btn-settings", text: T("Settings"), style: "btn-cine", act: () => openMenu() },
   ];

@@ -131,3 +131,11 @@ with a notice; offline play keeps working.
 - The table's DOM-era rounded stage corners are square (the page around the 3D view is painted in bands).
 - Sheen on the leather rail is not drawn (the engine's physical material draws clearcoat only).
 - Turn-timeout granularity equals the script's 1 Hz tick.
+
+<!-- regional-localization:start -->
+
+### Regional interface languages
+
+The string tables include complete regional variants for `fr-BE`, `en-SG`, `en-HK`, `en-BQ`, `es-CO`, `fr-IT`, `es-CL`, `es-AR`, `es-EC`, `de-BE`, `de-IT`, `de-BR`. These reuse the corresponding existing translations in their language family. The runtime can resolve the exact regional tag. Language selection is available from the game’s Options panel or F2 and is saved per player in `ui.language`. Changes apply during play. Additional national, regional and indigenous language packs are only shipped once every English message has a translation with intact placeholders and markup. Complete additional language tables: `ja-JP`, `nl-BE`, `zh-SG`, `ms-SG`, `zh-HK`, `nl-NL`, `fi-FI`, `sv-FI`, `et-EE`, `id-ID`, `vi-VN`, `ta-SG`, `yue-HK`, `ru-FI`, `ru-EE`, `da-DE`, `lb-BE`, `co-FR`, `eu-FR`, `ca-FR`, `oc-FR`, `sl-IT`, `fur-IT`, `ca-IT`, `oc-IT`, `ca-ES`, `eu-ES`, `gl-ES`, `su-ID`, `bew-ID`, `km-VN`.
+
+<!-- regional-localization:end -->

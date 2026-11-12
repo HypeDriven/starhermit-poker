@@ -1,3 +1,4 @@
+import { withLanguageRender as __l10nRender } from "./l10n/menu.ts";
 // StarHermit Poker on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers by
 // the engine's web runtime. It is what the browser build's src/app.js and its
@@ -605,10 +606,14 @@ export const stage = { x: 0, y: 0, width: 0, height: 0 };
 const pending: (() => void)[] = [];
 /** A widget's press, run once the frame's UI is built (state changes mid-build would break later widgets). */
 export function later(fn: () => void): void { pending.push(fn); }
-onRender(() => {
+onRender(__l10nRender(() => {
   drawScreens();
   for (const fn of pending.splice(0)) fn();
   const f = frame();
   table3d.frameUpdate(frameDt, f.width, f.height, stage);
   menu3d.frameUpdate(frameDt, f.width, f.height);
-});
+}));
+
+// localization-runtime:menu
+import { installLanguageMenu as __installLanguageMenu } from "./l10n/menu.ts";
+__installLanguageMenu(false);

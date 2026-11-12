@@ -11,7 +11,7 @@ import { setLocale, STRINGS } from './bind-strings.js';
 import { describeLogEntry } from '../src/table-utils.js';
 
 const EN = STRINGS['en-US'];
-const LOCALES = ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT'];
+const LOCALES = ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT', 'fr-BE', 'en-SG', 'en-HK', 'en-BQ', 'es-CO', 'fr-IT', 'es-CL', 'es-AR', 'es-EC', 'de-BE', 'de-IT', 'ja-JP', 'nl-BE', 'de-BR', 'zh-SG', 'ms-SG', 'zh-HK', 'nl-NL', 'fi-FI', 'sv-FI', 'et-EE', 'id-ID', 'vi-VN', 'ta-SG', 'yue-HK', 'ru-FI', 'ru-EE', 'da-DE', 'lb-BE', 'co-FR', 'eu-FR', 'ca-FR', 'oc-FR', 'sl-IT', 'fur-IT', 'ca-IT', 'oc-IT', 'ca-ES', 'eu-ES', 'gl-ES', 'su-ID', 'bew-ID', 'km-VN'];
 const read = (f) => readFileSync(new URL('../' + f, import.meta.url), 'utf8');
 const lit = /(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/.source;
 const unq = (m) => (m[1] ?? m[2]).replace(/\\'/g, "'").replace(/\\"/g, '"');
@@ -74,10 +74,10 @@ test('every used key exists in every translated locale with matching placeholder
   assert.deepEqual(missing, []);
 });
 
-test('nine locales; en-GB overrides only real keys; symbolic keys have en-US text', () => {
+test('nine locales; complete en-GB catalog uses canonical English keys; symbolic keys have en-US text', () => {
   assert.deepEqual(Object.keys(STRINGS).sort(), [...LOCALES].sort());
-  const keys = usedKeys();
-  for (const k of Object.keys(STRINGS['en-GB'])) assert.ok(keys.has(k), 'unknown en-GB key ' + k);
+  assert.deepEqual(Object.keys(STRINGS['en-GB']).sort(), Object.keys(EN).sort(),
+    'the complete British English catalog matches the canonical key set');
   for (const s of ['preflop', 'flop', 'turn', 'river', 'showdown']) {
     assert.ok(EN['street.' + s], 'street.' + s);
     assert.ok(EN['street-dealt.' + s], 'street-dealt.' + s);

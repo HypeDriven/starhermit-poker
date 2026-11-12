@@ -1,3 +1,6 @@
+import { localizedStyle as __l10nStyle } from "./l10n/font.ts";
+// localization-runtime:attached
+import { openLocalizedOptions as __l10nOptions } from "./l10n/menu.ts";
 // The browser build's DOM screens (src/offline.js, lobby.js, table.js,
 // leaderboard.js, replays.js and css/style.css) as starhermit:ui, built every
 // frame: the menu over the casino (title, the account line, the actions, How
@@ -12,7 +15,21 @@
 // short landscape (≤ 500 px tall: the action bar beside the stage). Settings
 // opens the runtime's Options (graphics, sound, language, controls), which
 // replaced the old Settings panel.
-import { frame, openMenu } from "starhermit:engine";
+// The browser build's DOM screens (src/offline.js, lobby.js, table.js,
+// leaderboard.js, replays.js and css/style.css) as starhermit:ui, built every
+// frame: the menu over the casino (title, the account line, the actions, How
+// to play, the AI-opponent stepper, the room-invite inbox, the skip hint, the
+// notes), the table lobby (status, the seat grid with the host's AI moves,
+// Ready / Start / Open / Leave, friend invites and the share link), the table
+// (the status bar with Leave and Settings, the seat panels and the pot over
+// the 3D stage, the action bar, the feed, voice and chat), the leaderboard and
+// the replay list and viewer. The old media queries are layouts picked by the
+// window's logical size: wide (≥ 760 px: the action bar's buttons beside the
+// bet controls), phone (a stacked action bar; 2 × 2 buttons at ≤ 420 px) and
+// short landscape (≤ 500 px tall: the action bar beside the stage). Settings
+// opens the runtime's Options (graphics, sound, language, controls), which
+// replaced the old Settings panel.
+import { frame } from "starhermit:engine";
 import * as draw from "starhermit:draw";
 import * as ui from "starhermit:ui";
 import { seatUnit, seatVisual, seatName } from "../src/table-utils.js";
@@ -53,11 +70,11 @@ function button(b: Btn, width: number | null = null): ui.Rect | null {
   const s: ui.Style = width != null ? { width } : {};
   if (width != null && buttonWidth(b.text, style) > width) {
     const inner = Math.max(20, width - 26);
-    opts.content = () => { ui.style({ text: { align: "center" } }).paragraph(b.text, inner); };
+    opts.content = () => { ui.style(__l10nStyle({ text: { align: "center" } })).paragraph(b.text, inner); };
   }
   // A glyph button keeps its spoken name (aria) and shows the glyph in the button's own text style.
   if (b.aria && !opts.content) opts.content = () => ui.label(b.text);
-  if (ui.style(style, s).id(b.id).button(b.aria ?? b.text, opts) && fresh()) later(b.act);
+  if (ui.style(__l10nStyle(style), __l10nStyle(s)).id(b.id).button(b.aria ?? b.text, opts) && fresh()) later(b.act);
   return null;
 }
 /** Buttons at their own widths in rows that wrap at `width`. */
@@ -69,7 +86,7 @@ function flow(label: string, list: Btn[], width: number, gap = 10, justify: "sta
 /** Text up to `width` wide: one label when it fits, else a paragraph. */
 function para(text: string, width: number, cls = "body", id?: string): void {
   if (!text) return;
-  let u = ui.style(cls);
+  let u = ui.style(__l10nStyle(cls));
   if (id) u = u.id(id);
   if (textWidth(text, cls) <= width) u.label(text);
   else u.paragraph(text, width);
@@ -78,16 +95,16 @@ function para(text: string, width: number, cls = "body", id?: string): void {
 function note(text: string, width: number, cls: string, id: string, hidden = false): void {
   const inner = Math.min(width - 26, textWidth(text, cls) + 2);
   ui.column(id, () => {
-    if (textWidth(text, cls) <= width - 26) ui.style({ text: { align: "center" } }).label(text);
-    else ui.style({ text: { align: "center" } }).paragraph(text, inner);
+    if (textWidth(text, cls) <= width - 26) ui.style(__l10nStyle({ text: { align: "center" } })).label(text);
+    else ui.style(__l10nStyle({ text: { align: "center" } })).paragraph(text, inner);
   }, { style: hidden ? [cls, "invisible"] : cls, align: "center" });
 }
 function heading(cls: string, text: string, width: number): void {
-  if (textWidth(text, cls, "heading") <= width) ui.style(cls).heading(text);
-  else ui.style(cls).paragraph(text, width);
+  if (textWidth(text, cls, "heading") <= width) ui.style(__l10nStyle(cls)).heading(text);
+  else ui.style(__l10nStyle(cls)).paragraph(text, width);
 }
 function badge(id: string, cls: string, text: string): void {
-  ui.column(id, () => ui.style("badge-text").label(text), { style: cls, align: "center" });
+  ui.column(id, () => ui.style(__l10nStyle("badge-text")).label(text), { style: cls, align: "center" });
 }
 /** A full-window box: a placed role-"none" widget, so it covers what was built before it and takes no pointer. */
 function backdrop(cls: string, clipOut?: { x: number; y: number; width: number; height: number }): void {
@@ -168,8 +185,8 @@ function menuScreen(full: number, L: Layout): void {
   const big = textWidth(titleText, "title", "heading");
   const small = textWidth(titleText, "title-small", "heading");
   ui.column("menu-head", () => {
-    if (big <= full) ui.style("title").heading(titleText);
-    else ui.style("title-small", { text: { size: Math.max(18, Math.floor(38 * Math.min(1, (full - 4) / small))), letterSpacing: small > full ? 2 : 4.5 } }).heading(titleText);
+    if (big <= full) ui.style(__l10nStyle("title")).heading(titleText);
+    else ui.style(__l10nStyle("title-small"), __l10nStyle({ text: { size: Math.max(18, Math.floor(38 * Math.min(1, (full - 4) / small))), letterSpacing: small > full ? 2 : 4.5 } })).heading(titleText);
   }, { width: full, align: "center" });
   const w = Math.min(full, 672);
   if (signed) {
@@ -177,7 +194,7 @@ function menuScreen(full: number, L: Layout): void {
     ui.row("player-chip", () => {
       const av = platform.avatarImage();
       if (av) ui.widget("", { role: "none", size: { width: 28, height: 28 }, draw: (r) => draw.image(av, r.x, r.y, r.width, r.height) });
-      ui.style("player-chip").label(platform.nameOf(platform.userId(), null));
+      ui.style(__l10nStyle("player-chip")).label(platform.nameOf(platform.userId(), null));
     }, { spacing: 8, align: "center" });
     note(me && me.elo !== undefined
       ? T("Elo {elo} · {w}W / {l}L / {d}D", { elo: me.elo, w: me.wins ?? 0, l: me.losses ?? 0, d: me.draws ?? 0 })
@@ -193,22 +210,22 @@ function menuScreen(full: number, L: Layout): void {
     { id: "btn-replays", text: T("Replays"), style: "btn-cine", act: showReplays },
     { id: "btn-help", text: T("How to play"), style: "btn-cine", act: toggleHelp, selected: app.helpOpen },
     ...(platform.inviteLink() ? [{ id: "btn-invite", text: T("starhermit.invite"), style: "btn-cine", act: copyInvite }] : []),
-    { id: "btn-settings", text: T("Settings"), style: "btn-cine", act: () => openMenu() },
+    { id: "btn-settings", text: T("Settings"), style: "btn-cine", act: () => __l10nOptions() },
   ] : [
     { id: "btn-play", text: T("Play"), style: "btn-cine-primary big", act: startOffline },
     { id: "btn-signin", text: T("starhermit.signIn"), style: "btn-cine", act: signIn },
     { id: "btn-help", text: T("How to play"), style: "btn-cine", act: toggleHelp, selected: app.helpOpen },
-    { id: "btn-settings", text: T("Settings"), style: "btn-cine", act: () => openMenu() },
+    { id: "btn-settings", text: T("Settings"), style: "btn-cine", act: () => __l10nOptions() },
   ];
   flow("menu-actions", btns, w, 12, "center");
   if (app.status) note(app.status(), w, "menu-note-small", "menu-status");
   if (app.helpOpen) helpPanel(Math.min(w, 640));
   if (signed) {
     ui.row("ai-stepper", () => {
-      ui.style("menu-note-small").label(T("AI opponents"));
-      if (ui.style("btn-cine").id("ai-less").button(T("Fewer AI opponents"), { content: () => ui.label("−") }) && fresh()) later(() => stepAi(-1));
-      ui.style("ai-count").label(String(app.aiCount));
-      if (ui.style("btn-cine").id("ai-more").button(T("More AI opponents"), { content: () => ui.label("+") }) && fresh()) later(() => stepAi(1));
+      ui.style(__l10nStyle("menu-note-small")).label(T("AI opponents"));
+      if (ui.style(__l10nStyle("btn-cine")).id("ai-less").button(T("Fewer AI opponents"), { content: () => ui.label("−") }) && fresh()) later(() => stepAi(-1));
+      ui.style(__l10nStyle("ai-count")).label(String(app.aiCount));
+      if (ui.style(__l10nStyle("btn-cine")).id("ai-more").button(T("More AI opponents"), { content: () => ui.label("+") }) && fresh()) later(() => stepAi(1));
     }, { spacing: 10, align: "center" });
     if (app.invites.length) {
       const iw = Math.min(w, 560);
@@ -216,7 +233,7 @@ function menuScreen(full: number, L: Layout): void {
         heading("h2", T("Table invites"), iw - 34);
         for (const inv of app.invites) {
           ui.row(`inv-${inv.id}`, () => {
-            ui.style("body", { text: { overflow: "ellipsis" } }).label(T("{name} invites you to a table", { name: inv.fromUsername || T("A friend") }));
+            ui.style(__l10nStyle("body"), __l10nStyle({ text: { overflow: "ellipsis" } })).label(T("{name} invites you to a table", { name: inv.fromUsername || T("A friend") }));
             ui.spacer();
             button({ id: `inv-acc-${inv.id}`, text: T("Accept"), style: "btn-primary btn-small", act: () => answerInvite(inv, true), disabled: app.busy });
             button({ id: `inv-dec-${inv.id}`, text: T("Decline"), style: "btn btn-small", act: () => answerInvite(inv, false), disabled: app.busy });
@@ -260,14 +277,14 @@ function lobbyScreen(w: number, L: Layout): void {
     for (const { seat, participant: p } of seats) {
       if (!p) {
         if (arrange && l.selectedAi) {
-          if (ui.style("seat-drop", { width: cw }).id(`seat-${seat}`).button(T("Seat {n}", { n: seat + 1 }), {
-            content: () => { ui.style("seat-name").label(T("Seat {n}", { n: seat + 1 })); ui.style("small").label(T("Tap to place AI")); },
+          if (ui.style(__l10nStyle("seat-drop"), __l10nStyle({ width: cw })).id(`seat-${seat}`).button(T("Seat {n}", { n: seat + 1 }), {
+            content: () => { ui.style(__l10nStyle("seat-name")).label(T("Seat {n}", { n: seat + 1 })); ui.style(__l10nStyle("small")).label(T("Tap to place AI")); },
             tooltip: T("Place the selected AI here"),
           }) && fresh()) later(() => void l.placeAi(seat));
         } else {
           ui.column(`seat-${seat}`, () => {
-            ui.style("seat-name").label(T("Seat {n}", { n: seat + 1 }));
-            ui.style("small").label(T("Empty — AI at start"));
+            ui.style(__l10nStyle("seat-name")).label(T("Seat {n}", { n: seat + 1 }));
+            ui.style(__l10nStyle("small")).label(T("Empty — AI at start"));
           }, { style: ["seat", "seat-empty"], width: cw, spacing: 5, tooltip: T("Empty seats become AI when the table starts") });
         }
         continue;
@@ -276,9 +293,9 @@ function lobbyScreen(w: number, L: Layout): void {
       const name = p.isAi || !p.userId ? (p.displayName || T("AI")) : platform.nameOf(p.userId, p.displayName || p.username);
       if (p.isAi && arrange) {
         const picked = l.selectedAi === p.id;
-        if (ui.style(picked ? "seat-picked" : "seat-move", { width: cw }).id(`seat-${seat}`).button(name, {
+        if (ui.style(__l10nStyle(picked ? "seat-picked" : "seat-move"), __l10nStyle({ width: cw })).id(`seat-${seat}`).button(name, {
           content: () => {
-            ui.style("seat-name", { text: { overflow: "ellipsis" } }).label(name);
+            ui.style(__l10nStyle("seat-name"), __l10nStyle({ text: { overflow: "ellipsis" } })).label(name);
             ui.row(`seat-${seat}-b`, () => { badge(`seat-${seat}-ai`, "badge-ai", T("badge.ai")); if (picked) badge(`seat-${seat}-mv`, "badge-move", T("badge.move")); }, { spacing: 5 });
           },
           tooltip: picked ? T("Tap again to put it back") : T("Select this AI, then tap an empty seat to move it"),
@@ -288,7 +305,7 @@ function lobbyScreen(w: number, L: Layout): void {
       const online = l.isOnline(p);
       const ready = l.isReady(p);
       ui.column(`seat-${seat}`, () => {
-        ui.style("seat-name", { text: { overflow: "ellipsis" } }).label(name);
+        ui.style(__l10nStyle("seat-name"), __l10nStyle({ text: { overflow: "ellipsis" } })).label(name);
         ui.row(`seat-${seat}-b`, () => {
           if (p.isHost) badge(`seat-${seat}-h`, "badge-host", T("badge.host"));
           if (p.isAi) badge(`seat-${seat}-a`, "badge-ai", T("badge.ai"));
@@ -322,8 +339,8 @@ function lobbyScreen(w: number, L: Layout): void {
         const name = platform.nameOf(f.userId, f.username);
         ui.row(`friend-${f.userId}`, () => {
           ui.widget("", { role: "none", size: { width: 9, height: 9 }, draw: (r) => draw.circle(r.x + r.width / 2, r.y + r.height / 2, r.width / 2, f.online ? "#4caf7d" : "#555555") });
-          ui.style("body", { text: { overflow: "ellipsis" } }).label(name);
-          if (f.currentGame) ui.style("small").label(T("playing {game}", { game: f.currentGame }));
+          ui.style(__l10nStyle("body"), __l10nStyle({ text: { overflow: "ellipsis" } })).label(name);
+          if (f.currentGame) ui.style(__l10nStyle("small")).label(T("playing {game}", { game: f.currentGame }));
           ui.spacer();
           button({ id: `invite-${f.userId}`, text: invited ? T("Invited ✓") : T("Invite"), style: "btn btn-small", act: () => lobbyInvite(f), disabled: invited });
         }, { style: "friend-row", spacing: 10, width: w, align: "center" });
@@ -341,7 +358,7 @@ export function cardName(c: number): string { return `${RANKS[c % 13]}${SUITS[(c
 function pcard(id: string, c: number, big = false): void {
   const red = ((c / 13) | 0) === 1 || ((c / 13) | 0) === 2;
   const detailed = frame().quality !== "low";
-  ui.column(id, () => ui.style(big ? (red ? "pcard-big-red" : "pcard-big-black") : (red ? "pcard-red" : "pcard-black")).label(cardName(c)),
+  ui.column(id, () => ui.style(__l10nStyle(big ? (red ? "pcard-big-red" : "pcard-big-black") : (red ? "pcard-red" : "pcard-black"))).label(cardName(c)),
     { style: detailed ? "pcard-detailed" : "pcard", align: "center" });
 }
 type Mode = "wide" | "phone" | "short";
@@ -378,11 +395,11 @@ function tableScreen(L: Layout): void {
       const stopped = app.online?.stopped ? T("connection closed") : "";
       const leaveW = buttonWidth(T("Leave table"), "pill");
       const setW = buttonWidth(mode === "phone" && L.lw < 560 ? "⚙" : `⚙ ${T("Settings")}`, "pill");
-      ui.style("table-status", { width: Math.max(40, L.lw - 2 * pad - leaveW - setW - 40), text: { overflow: "ellipsis" } })
+      ui.style(__l10nStyle("table-status"), __l10nStyle({ width: Math.max(40, L.lw - 2 * pad - leaveW - setW - 40), text: { overflow: "ellipsis" } }))
         .label(tableStatus(m?.pub, { reconnecting: !!app.online && !app.online.connected && !app.online.unavailable, stopped }));
       ui.spacer();
       const compact = mode === "phone" && L.lw < 560;
-      button({ id: "btn-table-settings", text: compact ? "⚙" : `⚙ ${T("Settings")}`, ...(compact ? { aria: T("Settings") } : {}), style: "pill", act: () => openMenu() });
+      button({ id: "btn-table-settings", text: compact ? "⚙" : `⚙ ${T("Settings")}`, ...(compact ? { aria: T("Settings") } : {}), style: "pill", act: () => __l10nOptions() });
     }, { width: L.lw - 2 * pad, align: "center", spacing: 8 });
     remember("tbar", r, L.sc);
   });
@@ -444,10 +461,10 @@ function seatPanels(L: Layout, mode: Mode, sx: number, sy: number, sw: number, s
     const fs = (base: number): ui.Style => (small ? { text: { size: base * 0.85 } } : {});
     ui.place(key, { anchor: "top-start", x: cx - size.w / 2, y: cy - size.h / 2 }, () => {
       const r = ui.column(`${key}-col`, () => {
-        ui.style("seat-title", fs(12.2), { text: { overflow: "ellipsis" } }).label(name);
-        ui.row(`${key}-stack`, () => { ui.style("seat-diamond").label("◆"); ui.style("seat-stack", fs(12.2)).label(Num(s.stack)); }, { spacing: 3, align: "center" });
-        if (s.roundCommit > 0) ui.style("seat-bet", fs(11)).label(T("bet {n}", { n: Num(s.roundCommit) }));
-        if (badges.length) ui.style("seat-flags", fs(10)).label(badges.join(" "));
+        ui.style(__l10nStyle("seat-title"), __l10nStyle(fs(12.2)), __l10nStyle({ text: { overflow: "ellipsis" } })).label(name);
+        ui.row(`${key}-stack`, () => { ui.style(__l10nStyle("seat-diamond")).label("◆"); ui.style(__l10nStyle("seat-stack"), __l10nStyle(fs(12.2))).label(Num(s.stack)); }, { spacing: 3, align: "center" });
+        if (s.roundCommit > 0) ui.style(__l10nStyle("seat-bet"), __l10nStyle(fs(11))).label(T("bet {n}", { n: Num(s.roundCommit) }));
+        if (badges.length) ui.style(__l10nStyle("seat-flags"), __l10nStyle(fs(10))).label(badges.join(" "));
         // The local player's own hole cards (only ever their own), and the showdown's revealed cards for a while.
         if (self && y0 && Array.isArray(y0.holeCards)) ui.row(`${key}-cards`, () => y0.holeCards!.forEach((c, i) => pcard(`${key}-c${i}`, c)), { spacing: 3 });
         const shown = reveal && reveal[s.seat];
@@ -460,7 +477,7 @@ function seatPanels(L: Layout, mode: Mode, sx: number, sy: number, sw: number, s
     });
     if (acting && secs !== null) {
       ui.place(`${key}-timer`, { anchor: "top-start", x: cx + size.w / 2 - 26, y: cy - size.h / 2 - 8 }, () => {
-        ui.column(`${key}-timer-col`, () => ui.style("seat-timer-text").label(`${secs}s`), { style: "seat-timer", align: "center" });
+        ui.column(`${key}-timer-col`, () => ui.style(__l10nStyle("seat-timer-text")).label(`${secs}s`), { style: "seat-timer", align: "center" });
       });
     }
   }
@@ -479,12 +496,12 @@ function centerInfo(L: Layout, mode: Mode, sx: number, sy: number, sw: number, s
     const r = ui.column(`${k}-col`, () => {
       if (stopped) ui.column("stop-note", () => para(T("This table is no longer available — leave it to return to the menu."), cw - 26, "body"), { style: "online-stop", width: cw });
       if (!p) return;
-      ui.column("pot", () => ui.style("pot-text").label(T("Pot {n}", { n: Num(p.pot) })), { style: "pot", align: "center" });
+      ui.column("pot", () => ui.style(__l10nStyle("pot-text")).label(T("Pot {n}", { n: Num(p.pot) })), { style: "pot", align: "center" });
       if (p.matchResult) {
         const r0 = p.matchResult;
         const winner = app.offline && r0.winnerUserId === "local-player" ? T("You") : (r0.winnerName || "–");
-        ui.style("match-result").label(T("Winner: {name}", { name: winner }));
-        if (app.lbLine) ui.style("match-lb").label(app.lbLine());
+        ui.style(__l10nStyle("match-result")).label(T("Winner: {name}", { name: winner }));
+        if (app.lbLine) ui.style(__l10nStyle("match-lb")).label(app.lbLine());
         if (app.offline) button({ id: "btn-rematch", text: T("New match"), style: "btn-primary", act: rematch });
       }
     }, { align: "center", spacing: 6 });
@@ -525,7 +542,7 @@ function actionBar(w: number, mode: Mode): void {
       } else {
         ui.widget("", { role: "none", size: { width: sw, height: 20 }, draw: (r) => draw.roundRect(r.x, r.y + r.height / 2 - 3, r.width, 6, 3, "#3a3a3a80") });
       }
-      ui.style("bet-amount", { width: amountW }).label(myTurn ? Num(app.bet) : "");
+      ui.style(__l10nStyle("bet-amount"), __l10nStyle({ width: amountW })).label(myTurn ? Num(app.bet) : "");
     }, { spacing: 10, width: bw, align: "center" });
     const presets: [string, () => void][] = [
       ["preset.min", () => preset("min")], ["preset.half", () => preset(0.5)], ["preset.three-quarters", () => preset(0.75)],
@@ -560,7 +577,7 @@ function feed(w: number, lines: number): void {
   ui.column("feed", () => {
     items.forEach((it, i) => {
       const win = it.cls === "win";
-      ui.column(`feed-${i}`, () => ui.style(win ? "feed-win-text" : "feed-text", { text: { overflow: "ellipsis" } }).label(it.text()), { style: win ? "feed-win" : "feed-item", width: w });
+      ui.column(`feed-${i}`, () => ui.style(__l10nStyle(win ? "feed-win-text" : "feed-text"), __l10nStyle({ text: { overflow: "ellipsis" } })).label(it.text()), { style: win ? "feed-win" : "feed-item", width: w });
     });
   }, { width: w, spacing: 4 });
 }
@@ -582,7 +599,7 @@ function voiceRow(w: number): void {
       const peers = v.status.participants;
       if (peers.length) ui.row("voice-peers", () => {
         for (const peer of peers) {
-          ui.column(`peer-${peer.userId}`, () => ui.style("small-fg").label(`${peer.muted ? "🔇" : "🎙"} ${platform.nameOf(peer.userId, peer.username)}`),
+          ui.column(`peer-${peer.userId}`, () => ui.style(__l10nStyle("small-fg")).label(`${peer.muted ? "🔇" : "🎙"} ${platform.nameOf(peer.userId, peer.username)}`),
             { style: peer.speaking ? "voice-peer-speaking" : "voice-peer" });
         }
       }, { spacing: 6 });
@@ -606,10 +623,10 @@ function chatDialog(L: Layout): void {
           for (const line of c.lines) {
             ui.row(`chat-${line.id}`, () => {
               const who = platform.nameOf(line.who, null);
-              ui.style(line.mine ? "chat-who-mine" : "chat-who").label(who);
+              ui.style(__l10nStyle(line.mine ? "chat-who-mine" : "chat-who")).label(who);
               const tw = w - 30 - textWidth(who, "chat-who");
-              if (textWidth(line.text, "chat-text") <= tw) ui.style("chat-text").label(line.text);
-              else ui.style("chat-text").paragraph(line.text, Math.max(60, tw));
+              if (textWidth(line.text, "chat-text") <= tw) ui.style(__l10nStyle("chat-text")).label(line.text);
+              else ui.style(__l10nStyle("chat-text")).paragraph(line.text, Math.max(60, tw));
             }, { spacing: 6 });
           }
         }, { width: w - 16, spacing: 4 });
@@ -638,10 +655,10 @@ function boardScreen(w: number): void {
     ui.column("board-rows", () => {
       for (const r of b.rows) {
         ui.row(`row-${r.rank}`, () => {
-          ui.style("lb-rank", { width: 52 }).label(`#${r.rank}`);
-          ui.style("body", { text: { overflow: "ellipsis" }, width: w - 52 - 90 - 30 }).label(r.name);
+          ui.style(__l10nStyle("lb-rank"), __l10nStyle({ width: 52 })).label(`#${r.rank}`);
+          ui.style(__l10nStyle("body"), __l10nStyle({ text: { overflow: "ellipsis" }, width: w - 52 - 90 - 30 })).label(r.name);
           ui.spacer();
-          ui.style("lb-score").label(Num(r.score));
+          ui.style(__l10nStyle("lb-score")).label(Num(r.score));
         }, { style: r.you ? "lb-row-self" : "lb-row", width: w, spacing: 10 });
       }
     }, { width: w });
@@ -660,8 +677,8 @@ function replaysScreen(w: number): void {
     const res = r.result as { winnerName?: string; hands?: number } | null;
     const result = res ? T("{name} won · {n} hands", { name: res.winnerName || T("Winner"), n: res.hands ?? "?" }) : T("finished");
     const date = r.finishedAt ? new Date(r.finishedAt).toISOString().slice(0, 10) : "";
-    if (ui.style("replay-row", { width: w }).id(`replay-${r.sessionId}`).button(`${names} — ${result}`, {
-      content: () => { ui.style("body", { text: { overflow: "ellipsis" } }).label(names); ui.style("small").label(`${result} · ${date}`); },
+    if (ui.style(__l10nStyle("replay-row"), __l10nStyle({ width: w })).id(`replay-${r.sessionId}`).button(`${names} — ${result}`, {
+      content: () => { ui.style(__l10nStyle("body"), __l10nStyle({ text: { overflow: "ellipsis" } })).label(names); ui.style(__l10nStyle("small")).label(`${result} · ${date}`); },
     }) && fresh()) later(() => openReplay(r.sessionId));
   }
   button({ id: "btn-replays-back", text: T("Back"), act: () => goMenu() });
@@ -676,7 +693,7 @@ function replayScreen(w: number): void {
   if (v.result) para(T("{name} won · {n} hands", { name: v.result.winnerName || T("Winner"), n: e.handCount() }), w, "muted", "replay-result");
   const step = v.steps[v.stepIdx];
   if (step) {
-    ui.column("replay-pot", () => ui.style("pot-text").label(T("Pot {n}", { n: Num(step.pot) })), { style: "pot", align: "center" });
+    ui.column("replay-pot", () => ui.style(__l10nStyle("pot-text")).label(T("Pot {n}", { n: Num(step.pot) })), { style: "pot", align: "center" });
     ui.row("replay-board", () => (step.board as number[]).forEach((c, i) => pcard(`rb-${i}`, c, true)), { spacing: 5 });
     const eq = stepEquity();
     const cols = w < 420 ? 2 : 3;
@@ -687,11 +704,11 @@ function replayScreen(w: number): void {
         const folded = step.folded && step.folded[i];
         const pct = eq && eq[i] != null ? Math.round((eq[i] as number) * 100) : null;
         ui.column(`rs-${i}`, () => {
-          ui.style("seat-title", { text: { overflow: "ellipsis", align: "start" } }).label(meta.name);
-          ui.style("seat-stack", { text: { align: "start" } }).label(Num(step.stacks[i]));
-          if (step.commits[i] > 0) ui.style("seat-bet", { text: { align: "start" } }).label(T("in for {n}", { n: Num(step.commits[i]) }));
+          ui.style(__l10nStyle("seat-title"), __l10nStyle({ text: { overflow: "ellipsis", align: "start" } })).label(meta.name);
+          ui.style(__l10nStyle("seat-stack"), __l10nStyle({ text: { align: "start" } })).label(Num(step.stacks[i]));
+          if (step.commits[i] > 0) ui.style(__l10nStyle("seat-bet"), __l10nStyle({ text: { align: "start" } })).label(T("in for {n}", { n: Num(step.commits[i]) }));
           if (cards) ui.row(`rs-${i}-c`, () => (cards as number[]).forEach((c, k) => pcard(`rs-${i}-c${k}`, c)), { spacing: 3, style: folded ? "dim" : undefined } as ui.Layout);
-          if (pct !== null) ui.style("equity").label(T("{pct}% to win", { pct }));
+          if (pct !== null) ui.style(__l10nStyle("equity")).label(T("{pct}% to win", { pct }));
         }, { style: i === step.activeSeat ? "replay-seat-acting" : "replay-seat", width: cw, spacing: 2 });
       });
     }, { columns: cols, gap: 6, width: w });

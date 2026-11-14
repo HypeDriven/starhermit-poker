@@ -1,5 +1,7 @@
 # StarHermit Poker
 
+**[▶ Play Poker on StarHermit](https://dashboard.starhermit.com/play/b74dfd50-8e60-4af7-8052-8fcefa775be5)**
+
 Multiplayer no-limit Texas Hold'em for the [StarHermit](https://wiki.starhermit.com/)
 platform: 2–6 seats, play-money chips, server-authoritative rules, AI backfill,
 private tables, quick-join matchmaking, chat, optional voice, profiles,

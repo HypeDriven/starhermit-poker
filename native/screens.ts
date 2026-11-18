@@ -1,3 +1,4 @@
+import { bindings } from "starhermit:input";
 import { localizedStyle as __l10nStyle } from "./l10n/font.ts";
 // localization-runtime:attached
 import { openLocalizedOptions as __l10nOptions } from "./l10n/menu.ts";
@@ -146,7 +147,7 @@ function page(key: string, L: Layout, build: (w: number) => void, width: number,
 }
 
 // ------------------------------------------------------------------ the frame
-export function drawScreens(): void {
+function drawScreensImmediate(): void {
   const L = layoutNow();
   switch (app.screen) {
     case "menu": page("menu", L, (w) => menuScreen(w, L), 1000, null); break;
@@ -731,4 +732,11 @@ function replayScreen(w: number): void {
     if (pick !== idx && fresh()) later(() => setSpeed(speeds[pick]!));
   }, { spacing: 8, align: "center" });
   button({ id: "btn-replay-back", text: T("Back"), act: showReplays });
+}
+
+export function drawScreens(): void {
+  if (!(app.helpOpen)) { drawScreensImmediate(); return; }
+  const actions = ["fold","check_call","bet_raise","all_in","bet_more","bet_less","preset_min","preset_half","preset_three","preset_pot","preset_all","chat"];
+  const version = JSON.stringify([(app as any).settings ?? (app as any).options ?? {}, (platform as any).options ?? {}, actions.map((action) => bindings(action))]);
+  ui.retain!("help-screen", version, drawScreensImmediate);
 }

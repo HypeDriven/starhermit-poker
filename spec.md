@@ -1,7 +1,7 @@
 # StarHermit Poker — running spec
 
 Multiplayer no-limit Texas Hold'em (2–6 seats, play-money chips) as a StarHermit engine script game, pinned to
-engine 1.39.0 with `engine.minor=39` (strict three.js r185 parity). One package plays natively in the StarHermit
+engine 1.44.1 with `engine.minor=44` (strict three.js r185 parity). One package plays natively in the StarHermit
 client and in browsers through the engine's web runtime (the loader `index.html` that `npm run package` writes).
 `server.js` is the authoritative rules referee; this client only shows projections and sends commands.
 
@@ -139,3 +139,9 @@ with a notice; offline play keeps working.
 The string tables include complete regional variants for `fr-BE`, `en-SG`, `en-HK`, `en-BQ`, `es-CO`, `fr-IT`, `es-CL`, `es-AR`, `es-EC`, `de-BE`, `de-IT`, `de-BR`. These reuse the corresponding existing translations in their language family. The runtime can resolve the exact regional tag. Language selection is available from the game’s Options panel or F2 and is saved per player in `ui.language`. Changes apply during play. Additional national, regional and indigenous language packs are only shipped once every English message has a translation with intact placeholders and markup. Complete additional language tables: `ja-JP`, `nl-BE`, `zh-SG`, `ms-SG`, `zh-HK`, `nl-NL`, `fi-FI`, `sv-FI`, `et-EE`, `id-ID`, `vi-VN`, `ta-SG`, `yue-HK`, `ru-FI`, `ru-EE`, `da-DE`, `lb-BE`, `co-FR`, `eu-FR`, `ca-FR`, `oc-FR`, `sl-IT`, `fur-IT`, `ca-IT`, `oc-IT`, `ca-ES`, `eu-ES`, `gl-ES`, `su-ID`, `bew-ID`, `km-VN`.
 
 <!-- regional-localization:end -->
+
+## Engine 1.44.1
+
+Browser play uses the WebGPU-only StarHermit 1.44.1 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+
+The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.

@@ -332,6 +332,7 @@ function applyRenderer(): void {
   renderer.bloom = l.bloom === null ? null : { model: "r160", strength: 0.6, radius: 0.5, threshold: 1.5, resolution: l.bloom };
   renderer.grade = l.grade ? GRADE : null;
   renderer.antialias = l.antialias;
+  renderer.motionBlur = l.bloom !== null ? { intensity: 0.25, samples: 8, maxPixels: 16, targetFps: 60, camera: false } : null;
   renderer.shadowMap.enabled = l.shadows > 0;
   key.castShadow = l.shadows > 0;
   if (l.shadows > 0) key.shadow.mapSize = l.shadows; // the level's size: at minor ≥ 23 the engine keeps whatever the game sets

@@ -330,6 +330,7 @@ function applyRenderer(): void {
   renderer.bloom = l.bloom === null ? null : { model: "r160", strength: 0.45, radius: 0.4, threshold: 0.85, resolution: l.bloom };
   renderer.grade = l.grade ? GRADE : null;
   renderer.antialias = l.antialias;
+  renderer.motionBlur = l.bloom !== null ? { intensity: 0.25, samples: 8, maxPixels: 16, targetFps: 60, camera: false } : null;
 }
 
 let active = false;

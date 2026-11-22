@@ -1,7 +1,7 @@
 # StarHermit Poker — running spec
 
 Multiplayer no-limit Texas Hold'em (2–6 seats, play-money chips) as a StarHermit engine script game, pinned to
-engine 1.44.1 with `engine.minor=44` (strict three.js r185 parity). One package plays natively in the StarHermit
+engine 1.47.0 with `engine.minor=47` (strict three.js r185 parity). One package plays natively in the StarHermit
 client and in browsers through the engine's web runtime (the loader `index.html` that `npm run package` writes).
 `server.js` is the authoritative rules referee; this client only shows projections and sends commands.
 
@@ -140,8 +140,12 @@ The string tables include complete regional variants for `fr-BE`, `en-SG`, `en-H
 
 <!-- regional-localization:end -->
 
-## Engine 1.44.1
+## Engine 1.47.0
 
-Browser play uses the WebGPU-only StarHermit 1.44.1 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+Browser play uses the WebGPU-only StarHermit 1.47.0 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
 
 The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
+
+Browser rendering uses the engine's asynchronous pipeline creation so newly encountered materials do not stall the page. Native play retains the engine's synchronous pipeline behavior.
+
+Higher graphics tiers use native per-object motion blur for moving pieces and effects. Camera motion stays sharp, lower tiers omit the effect, and the runtime's Motion blur and Reduce motion preferences remain authoritative.

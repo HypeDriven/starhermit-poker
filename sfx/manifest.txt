@@ -1,0 +1,6 @@
+# Runtime-synthesized audio | event id | description | context
+deal (synthesized) | deal | Quick band-passed paper swish | Hole cards dealt
+place (synthesized) | place | Card snap with a soft low thud | Community card lands
+chips (synthesized) | chips | Three bright chip clicks | Chips move into the pot
+win (synthesized) | win | Three-note chime | Player wins a hand
+turn (synthesized) | turn | Soft rising blip | Action moves to the local player

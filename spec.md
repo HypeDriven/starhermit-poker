@@ -1,7 +1,7 @@
 # StarHermit Poker — running spec
 
 Multiplayer no-limit Texas Hold'em (2–6 seats, play-money chips) as a StarHermit engine script game, pinned to
-engine 1.47.0 with `engine.minor=47` (strict three.js r185 parity). One package plays natively in the StarHermit
+engine 1.50.0 with `engine.minor=50` (strict three.js r185 parity). One package plays natively in the StarHermit
 client and in browsers through the engine's web runtime (the loader `index.html` that `npm run package` writes).
 `server.js` is the authoritative rules referee; this client only shows projections and sends commands.
 
@@ -140,9 +140,9 @@ The string tables include complete regional variants for `fr-BE`, `en-SG`, `en-H
 
 <!-- regional-localization:end -->
 
-## Engine 1.47.0
+## Engine 1.50.0
 
-Browser play uses the WebGPU-only StarHermit 1.47.0 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+Browser play uses the WebGPU-only StarHermit 1.50.0 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
 
 The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
 

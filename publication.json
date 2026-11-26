@@ -12,7 +12,7 @@
     "metadataSource": "starhermit.txt",
     "createdAt": "2026-07-25T09:41:05.55637+00:00",
     "coverArtSource": "manifest",
-    "coverArtUpdatedAt": "2026-11-23T17:02:29.121924+00:00",
+    "coverArtUpdatedAt": "2026-11-26T15:15:54.45642+00:00",
     "submittedByUserId": "2712e04e-461b-4d23-81ae-e40b429128a8",
     "submittedByUsername": "starhermit",
     "hosting": {
@@ -22,9 +22,9 @@
       "pinnedCommitSha": null,
       "deployedCommitSha": null,
       "deployError": null,
-      "deployedAt": "2026-11-23T17:02:29.095389+00:00",
+      "deployedAt": "2026-11-26T15:15:53.2003+00:00",
       "externalLaunchUrl": null,
-      "engineVersion": "1.47.0",
+      "engineVersion": "1.50.0",
       "deployWarning": null
     },
     "description": "Play multiplayer no-limit Texas Hold'em, bluffing and betting with play-money chips to win the pot.",
@@ -36,19 +36,19 @@
     "links": [],
     "isDisabled": false
   },
-  "publishedAt": "2026-11-23T17:02:29.248Z",
-  "sourceCommit": "3b2a91747b64c8659dc28ce0ef5ef34b3c510079",
-  "bytesReceived": 9863293,
-  "archiveSha256": "8e79d8db0f7f332939e83b6271b173ff62bcda29c63efe3936a4ff1b1936128d",
+  "publishedAt": "2026-11-26T15:15:53.631Z",
+  "sourceCommit": "a55a987f955f88f6f7b83cc7266d9adec494a9af",
+  "bytesReceived": 9863265,
+  "archiveSha256": "c7e4e9cf8203635095c4c897d8bf44281a00f21191b611e4c63ca55ddbc14ed4",
   "indexSha256": "7f30dd692044672120bae74721173182d046937c7ab6f6bdff8662d05b148dec",
   "result": {
     "clientPublished": true,
     "serverImageLoaded": false,
     "imageDigest": null,
-    "bytesReceived": 9863293,
+    "bytesReceived": 9863265,
     "mode": "replace",
     "filesRemoved": 0,
-    "engineVersion": "1.47.0",
+    "engineVersion": "1.50.0",
     "deployWarning": null
   },
   "liveVerification": {

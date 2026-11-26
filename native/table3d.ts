@@ -88,6 +88,9 @@ const floorPool = new Mesh(new PlaneGeometry(13, 10), new MeshBasicMaterial({
 floorPool.rotation.x = -PI / 2;
 floorPool.position.y = -0.636;
 floorPool.noAO = true;
+// Still scenery (host API 1.49): the room's pool of light, stars, the felt print and the table surfaces never move
+// once placed. The motes stay movable: their vertex shader drifts them (a still object promises the same output).
+floorPool.movable = false;
 root.add(floorPool);
 
 const starGeo = new BufferGeometry();
@@ -103,6 +106,7 @@ const starGeo = new BufferGeometry();
 }
 const starMat = new PointsMaterial({ color: 0x729bd3, size: 0.035, transparent: true, opacity: 0.45 });
 const stars = new Points(starGeo, starMat);
+stars.movable = false;
 root.add(stars);
 
 // Dust motes drifting through the key light's cone: table3d.js MOTE_VERT / MOTE_FRAG as an instanced quad.
@@ -159,6 +163,7 @@ const logo = new Mesh(new PlaneGeometry(2.7, 0.67), new MeshBasicMaterial({
 }));
 logo.rotation.x = -PI / 2;
 logo.position.set(0, 0.281, -0.72);
+logo.movable = false;
 root.add(logo);
 
 // -- dynamic groups ----------------------------------------------------------------------------------
@@ -257,7 +262,7 @@ function buildSurfaces(): void {
   const b = look!.budget;
   for (const m of surfaces) { root.remove(m); m.geometry.dispose(); }
   surfaces = [];
-  const add = (m: Mesh): Mesh => { surfaces.push(m); root.add(m); return m; };
+  const add = (m: Mesh): Mesh => { m.movable = false; surfaces.push(m); root.add(m); return m; };
   const seg = b.curve;
   const floor = add(new Mesh(new CircleGeometry(12, seg), lit({ color: 0x080b12, roughness: 0.88, metalness: 0.12 })));
   floor.rotation.x = -PI / 2;

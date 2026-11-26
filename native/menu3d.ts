@@ -89,6 +89,9 @@ const skyMat = new ShaderMaterial({ uniforms: { uTime: { value: 0 } }, fragmentS
 const sky = new Mesh(new SphereGeometry(180, 48, 32), skyMat);
 sky.noAO = true;
 sky.frustumCulled = false;
+// Still scenery (host API 1.49): the nebula dome and the light shaft (their clocks only shade fragments). The dust
+// stays movable: its vertex shader drifts it.
+sky.movable = false;
 root.add(sky);
 
 // -- the light shaft from the dome's oculus ---------------------------------------------------------
@@ -107,6 +110,7 @@ const beamMat = new ShaderMaterial({
 const beam = new Mesh(new ConeGeometry(3.6, 22, 48, 1, true), beamMat);
 beam.position.set(0, 14.5, 0);
 beam.noAO = true;
+beam.movable = false;
 root.add(beam);
 
 // -- holographic rings over the felt -------------------------------------------------------------------
@@ -271,6 +275,8 @@ function loadCasino(): void {
       if (name.startsWith("FloatChip_")) chips.push({ obj: o, baseY: o.position.y, phase: phase() * 7 / (PI * 2) });
       if (name.startsWith("SuitCrystal_")) crystals.push({ obj: o, baseY: o.position.y, phase: phase() * 7 / (PI * 2) });
       if (name === "ChandelierStar") star = o;
+      // Still scenery: the hall's meshes stay put; the floating chips, suit crystals and the chandelier star move.
+      else if (!/^(FloatChip_|SuitCrystal_)/.test(name)) o.movable = false;
     });
     for (const o of remove) o.parent?.remove(o);
     root.add(hall);

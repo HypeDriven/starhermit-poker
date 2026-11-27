@@ -1,7 +1,7 @@
 # StarHermit Poker — running spec
 
 Multiplayer no-limit Texas Hold'em (2–6 seats, play-money chips) as a StarHermit engine script game, pinned to
-engine 1.50.0 with `engine.minor=50` (strict three.js r185 parity). One package plays natively in the StarHermit
+engine 1.53.0 with `engine.minor=53` (strict three.js r185 parity). One package plays natively in the StarHermit
 client and in browsers through the engine's web runtime (the loader `index.html` that `npm run package` writes).
 `server.js` is the authoritative rules referee; this client only shows projections and sends commands.
 
@@ -140,16 +140,18 @@ The string tables include complete regional variants for `fr-BE`, `en-SG`, `en-H
 
 <!-- regional-localization:end -->
 
-## Engine 1.50.0
+## Engine 1.53.0
 
-Browser play uses the StarHermit 1.50.0 web runtime on WebGPU, or WebGL 2 where WebGPU is missing. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+Browser play uses the StarHermit 1.53.0 web runtime on WebGPU, or WebGL 2 where WebGPU is missing. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
 
 The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
 
 Browser rendering uses the engine's asynchronous pipeline creation so newly encountered materials do not stall the page. Native play retains the engine's synchronous pipeline behavior.
 
-**Frame rate (host API 1.49 `setTargetFps`).** Under a finger (`primaryPointer() === "coarse"`) the game caps itself at 30 frames a second on the phone graphics levels (`levelIndex` ≤ 3), where steady 33 ms frames replace uneven ones; elsewhere, the menu included (its casino flight is the live scene), there is no game cap. The table steps on the fixed update, so play is unchanged. The engine sets the cap aside while its menus are open, and the player's Frame rate limit still applies.
+**Frame rate (host API 1.53 `setTargetFps`).** Under a finger (`primaryPointer() === "coarse"`) the game caps itself at 30 frames a second on the phone graphics levels (`levelIndex` ≤ 3), where steady 33 ms frames replace uneven ones; elsewhere, the menu included (its casino flight is the live scene), there is no game cap. The table steps on the fixed update, so play is unchanged. The engine sets the cap aside while its menus are open, and the player's Frame rate limit still applies.
 
-**Still scenery (host API 1.49).** The table's floor, pedestal, base, rail, felt and trims, the felt print, the floor's pool of light and the stars, and in the menu the nebula dome, the light shaft and the casino hall's fixed meshes are `movable = false`. The motes and the menu's dust (their vertex shaders drift them), the cards, chip stacks, seat groups, acting ring, holo bands, drifting holo cards, floating chips, suit crystals and the chandelier star stay movable. The shader clocks stay uniforms: each scene's clock runs only while that scene shows, and the nebula, shaft, rings and motes hold still when the background is static or motion is reduced.
+**Still scenery (host API 1.53).** The table's floor, pedestal, base, rail, felt and trims, the felt print, the floor's pool of light and the stars, and in the menu the nebula dome, the light shaft and the casino hall's fixed meshes are `movable = false`. The motes and the menu's dust (their vertex shaders drift them), the cards, chip stacks, seat groups, acting ring, holo bands, drifting holo cards, floating chips, suit crystals and the chandelier star stay movable. The shader clocks stay uniforms: each scene's clock runs only while that scene shows, and the nebula, shaft, rings and motes hold still when the background is static or motion is reduced.
 
 Higher graphics tiers use native per-object motion blur for moving pieces and effects. Camera motion stays sharp, lower tiers omit the effect, and the runtime's Motion blur and Reduce motion preferences remain authoritative.
+
+On engine 1.53.0, browser play through WebGL 2 compiles a frame's shader programs together and holds that frame until they are linked, blends skinned meshes in one pass, reuses the window pass's depth, and uses a hardware WebGL 2 context when WebGPU's adapter is software.
